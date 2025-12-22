@@ -1,0 +1,6 @@
+streamlit
+plotly
+numpy==1.26.4
+matplotlib
+pyyaml
+scipy
