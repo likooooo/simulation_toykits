@@ -1,4 +1,4 @@
-from pages.TMM.films import get_nk_at_wavelength
+from pages.fresnel_caculator.films import get_nk_at_wavelength
 import matplotlib.pyplot as plt
 from assets.simulation import *
 import streamlit as st
@@ -62,7 +62,6 @@ if 'coating_films' in st.session_state:
     fig.tight_layout()
     st.pyplot(fig)
 
-
     col_wl_min, col_wl_max = st.columns(2)
     with col_wl_min:
         wl_min = st.number_input(
@@ -86,7 +85,7 @@ if 'coating_films' in st.session_state:
 
     if wl_min >= wl_max: st.error("错误：起始波长必须小于截止波长")
 
-    if st.button("▶️ 计算", width='stretch'):
+    if st.button("▶️ 计算", width='stretch', key="calculate wavelength vs RT"):
         wls = np.linspace(wl_min, wl_max, 100)
         Rs, Rp = [], []
         Ts, Tp = [], []

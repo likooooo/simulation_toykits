@@ -24,9 +24,9 @@ def build_navigation_from_dir(pages_dict = {}, base_dir="pages", icon = "📄"):
 
 pages_dict = {}
 pages_dict[""] = [st.Page("pages/main.py", title="home", icon="🏠")]
-build_navigation_from_dir(pages_dict, "pages/TMM", icon= "📊")
-build_navigation_from_dir(pages_dict, "pages/Gaussain beams", icon= "🎯")
-build_navigation_from_dir(pages_dict, "pages/Diffraction", icon= "🎯")
+build_navigation_from_dir(pages_dict, "pages/fresnel_caculator", icon= "📊")
+build_navigation_from_dir(pages_dict, "pages/beams_caculator", icon= "🎯")
+build_navigation_from_dir(pages_dict, "pages/diffraction_caculator", icon= "🎯")
 
 pg = st.navigation(pages_dict)
 pg.run()

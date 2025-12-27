@@ -143,7 +143,7 @@ with st.expander("🛠️", expanded=True):
     st.session_state['film_stack_code'] = formula_str
     col_cfg1, col_cfg2 = st.columns(2)
     with col_cfg1:
-        if st.button("🔄 刷新", width='stretch'):
+        if st.button("🔄 刷新", width='stretch', key="update film table"):
             if formula_str:
                 try:
                     new_data = parse_formula_v1(formula_str)
@@ -155,7 +155,7 @@ with st.expander("🛠️", expanded=True):
                 except Exception as e:
                     st.error(f"解析出错: {e}")
     with col_cfg2:
-        if st.button("🗑️ 清空", width='stretch'):
+        if st.button("🗑️ 清空", width='stretch', key="clear film table"):
             st.session_state['layer_config'] = pd.DataFrame([])
             st.rerun()
     st.session_state['layer_config'] = st.data_editor(
@@ -183,7 +183,7 @@ with st.expander("🛠️", expanded=True):
         key="film_editor_main"
     )
 
-if st.button("▶️ 计算", width='stretch'):
+if st.button("▶️ 计算", width='stretch', key="calculate fresnel coefficients"):
     edited_df = st.session_state['layer_config']  
     if len(edited_df) < 2:
         st.warning("请至少添加两层材料（入射介质和基底）")
@@ -231,7 +231,7 @@ if st.button("▶️ 计算", width='stretch'):
                 c1, c2 = st.columns(2)
                 c1.metric("Reflectance (R)", f"{R_s:.4f}")
                 c2.metric("Transmittance (T)", f"{T_s:.4f}")
-                with st.expander("复数场系数", expanded=True):
+                with st.expander("fresnel coefficients", expanded=True):
                     st.write(f"r: `{r_s:.4f}`")
                     st.write(f"t: `{t_s:.4f}`")
 
@@ -240,7 +240,7 @@ if st.button("▶️ 计算", width='stretch'):
                 c3, c4 = st.columns(2)
                 c3.metric("Reflectance (R)", f"{R_p:.4f}")
                 c4.metric("Transmittance (T)", f"{T_p:.4f}")
-                with st.expander("复数场系数", expanded=True):
+                with st.expander("fresnel coefficients", expanded=True):
                     st.write(f"r: `{r_p:.4f}`")
                     st.write(f"t: `{t_p:.4f}`")
             
@@ -266,7 +266,7 @@ if st.button("▶️ 计算", width='stretch'):
                 layers, angles, color_map, 
                 angle_deg=angle_deg, 
                 title=f"Filmstack Visualization (@{target_wl}um)",
-                visual_width=-1, inf_display_height=np.mean(thickness_list)
+                visual_width=-1, inf_display_height=max(np.mean(thickness_list), target_wl)
             )
             st.pyplot(plt.gcf())
 
