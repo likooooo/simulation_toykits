@@ -1,10 +1,10 @@
-from pages.fresnel_caculator.films import get_nk_at_wavelength
+from common import get_nk_at_wavelength, with_nk_columns
 import matplotlib.pyplot as plt
 from assets.simulation import *
 import streamlit as st
 import numpy as np
 
-st.set_page_config(page_title="Simulation toykits (TMM)", layout="wide")
+st.set_page_config(page_title="Fresnel caculator (result)", layout="wide")
 st.header("光谱曲线")
 
 def compute_RT(input_layers, th0, wl):
@@ -92,9 +92,15 @@ if 'coating_films' in st.session_state:
         angle_deg = st.session_state['degree'] 
         nk_map = {}
         layer_names = st.session_state['layer_config']['Material']
-        for material_name in layer_names:
+        for material_name, n, k in zip(layer_names, st.session_state['layer_config']['n'], st.session_state['layer_config']['k']):
             if material_name in nk_map: continue
-            nk_map[material_name] = [get_nk_at_wavelength(material_name, w) for w in wls]
+            # const nk
+            if material_name not in st.session_state['materials_db']:
+                nk_map[material_name] = [n +1j*k] * len(wls)
+                st.warning(f"材料数据库中不存在 {material_name}, 该材料 nk 不会随着波长变化.")
+            # wavelength vs nk
+            else:
+                nk_map[material_name] = [get_nk_at_wavelength(material_name, w) for w in wls]
         for i in range(len(wls)):
             wl = wls[i]
             # update nk

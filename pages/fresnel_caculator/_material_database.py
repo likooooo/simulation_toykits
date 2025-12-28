@@ -1,3 +1,4 @@
+from common import init_materials_db
 import plotly.graph_objects as go
 import refractiveindex as ri
 import streamlit as st
@@ -7,7 +8,7 @@ import re
 
 csv_path = os.path.join(ri.meterial_db_path, "materials_index.csv")
 
-st.set_page_config(page_title="Simulation toykits", layout="wide")
+st.set_page_config(page_title="Fresnel caculator (select material)", layout="wide")
 st.header("材料数据库")
 
 if 'selected_shelf' not in st.session_state:
@@ -17,16 +18,6 @@ if 'selected_book' not in st.session_state:
 if 'selected_page' not in st.session_state:
     st.session_state.selected_page = "Malitson 1965: n 0.21–6.7 µm"
 
-def init_materials_db():
-    st.session_state['materials_db'] = {}
-    st.session_state['materials_db']["Vacuum"] = {
-        "Shelf ID": "\\",
-        "Book ID": "Vacuum",
-        "Page ID": "\\",
-        "Material Name": "Vacuum",
-        "Data Source": "\\"
-    }
-if 'materials_db' not in st.session_state: init_materials_db()
 
 RE_SUB = re.compile(r'<sub>(\d+)</sub>') 
 RE_SUP = re.compile(r'<sup>.*?</sup>')

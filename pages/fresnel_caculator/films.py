@@ -1,38 +1,13 @@
+from common import with_nk_columns, init_layer_config
 from filmstack_visualization import *
-import matplotlib.pyplot as plt
 from assets.simulation import *
-import refractiveindex as ri
+import matplotlib.pyplot as plt
 import streamlit as st
 import pandas as pd
-import numpy as np
 import re
 
-def get_nk_at_wavelength(name, wl_um):
-    if name == "Vacuum": return 1.0 + 0.0j
-    try:
-        row = st.session_state['materials_db'][name]
-        wls, ns, ks = ri.load_nk(row["Shelf ID"], row["Book ID"], row["Page ID"])
-        n_val = np.interp(wl_um, wls, ns)
-        k_val = np.interp(wl_um, wls, ks)
-        return n_val + 1j * k_val
-    except Exception as e:
-        st.error(f"加载材料 {name} (@ {wl_um} um) 出错.\n1. 请在 Material Database 中添加材料;\n2. 检查材料波长在范围内;\n")
-        return 1.0 + 0.0j
-def with_nk_columns(df, wl_um):
-    if df.empty:
-        return df
-    df_show = df.copy()
-    if df_show["n"] is not None and df_show["k"] is not None: return df_show
-    n_list, k_list = [], []
+meterial = meterial_s
 
-    for _, row in df.iterrows():
-        nk = get_nk_at_wavelength(row["Material"], wl_um)
-        n_list.append(np.real(nk))
-        k_list.append(np.imag(nk))
-
-    if df_show["n"] is None : df_show["n"] = n_list
-    if df_show["k"] is None : df_show["k"] = k_list
-    return df_show
 def get_available_materials():
     db_materials = list(st.session_state.get('materials_db', {}).keys())
     config_materials = []
@@ -97,6 +72,14 @@ def parse_formula_v1(formula: str):
                 i += 2
         else:
             i += 2
+        # data = {
+        #     "Material": material,
+        #     "Thickness (um)": thickness,
+        # }
+        # if n_override is not None and k_override is not None:
+        #     data["n"] = n_override
+        #     data["k"] = k_override
+        # layers.append(data)
 
         layers.append({
             "Material": material,
@@ -104,26 +87,9 @@ def parse_formula_v1(formula: str):
             "n": n_override,
             "k": k_override
         })
-
     return layers
 
-meterial = meterial_s
-
-def init_materials_db():
-    st.session_state['materials_db'] = {}
-    st.session_state['materials_db']["Vacuum"] = {
-        "Shelf ID": "\\",
-        "Book ID": "Vacuum",
-        "Page ID": "\\",
-        "Material Name": "Vacuum",
-        "Data Source": "\\"
-    }
-if 'materials_db' not in st.session_state: init_materials_db()
-if 'layer_config' not in st.session_state: st.session_state['layer_config'] = pd.DataFrame( [{"Material": "Vacuum", "Thickness (um)": 0.0,"n":1,"k":0}])
-if 'wavelength' not in st.session_state : st.session_state['wavelength'] = 0.532
-if 'degree' not in st.session_state : st.session_state['degree'] = 15
-if 'film_stack_code' not in st.session_state : st.session_state['film_stack_code'] = 'Vacuum 0 1 0 SiO2  0.12874 1.4621 1.4254e-5 Ta2O5  0.04396 2.1548  0.00021691 SiO2 0.27602 1.4621 1.4254e-5 Ta2O5 0.01699 2.1548  0.00021691  SiO2  0.24735 1.4621 1.4254e-5 fused_silica 0 1.4607 0'
-st.set_page_config(page_title="Simulation toykits (TMM)", layout="wide")
+st.set_page_config(page_title="Fresnel caculator (build filmstack)", layout="wide")
 st.header("膜系结构")
 
 col_cfg1, col_cfg2 = st.columns(2)
@@ -156,7 +122,7 @@ with st.expander("🛠️", expanded=True):
                     st.error(f"解析出错: {e}")
     with col_cfg2:
         if st.button("🗑️ 清空", width='stretch', key="clear film table"):
-            st.session_state['layer_config'] = pd.DataFrame([])
+            init_layer_config()
             st.rerun()
     st.session_state['layer_config'] = st.data_editor(
         st.session_state['layer_config'],
