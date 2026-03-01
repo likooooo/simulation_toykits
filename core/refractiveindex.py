@@ -20,6 +20,13 @@ _DATABASE_SHA = "451b9136b4b3566f6259b703990add5440ca125f"
 _MASTER_URL = f'https://github.com/polyanskiy/refractiveindex.info-database/archive/{_DATABASE_SHA}.zip'
 
 
+def _project_assets_db_path():
+    """项目根目录下 assets/refractiveindex.info-database 的绝对路径。"""
+    _ref_dir = os.path.dirname(os.path.abspath(__file__))
+    _project_root = os.path.dirname(_ref_dir)
+    return os.path.join(_project_root, "assets", "refractiveindex.info-database")
+
+
 class RefractiveIndex:
     """Class that parses the refractiveindex.info YAML database"""
 
@@ -80,32 +87,14 @@ class RefractiveIndex:
         with open(fileName, "rt", encoding="utf-8") as f:
             self.catalog = yaml.load(f, Loader=BaseLoader)
 
-        # TODO: Do i NEED namedtuples, or am i just wasting time?
-        # Shelf = collections.namedtuple('Shelf', ['SHELF', 'name', 'books'])
-        # Book = collections.namedtuple('Book', ['BOOK', 'name', 'pages'])
-        # Page = collections.namedtuple('Page', ['PAGE', 'name', 'path'])
-
-        # self.catalog = [Shelf(**shelf) for shelf in rawCatalog]
-        # for shelf in self.catalog:
-        #     books = []
-        #     for book in shelf.books:
-        #         rawBook = book
-        #         if not 'divider' in rawBook:
-        #             books.append(Book(**rawBook))
-        #         pages = []
-        #         for page in book.pages:
-        #             rawPage = page
-        #             pages.append(Page(**rawPage))
-        #         book.pages = pages
-
     def getMaterialFilename(self, book, page=None, shelf=None):
         """
         通过遍历目录查找并返回材料文件的完整路径。
         如果 page 或 shelf 未指定或不存在，将尝试自动选择第一个可用的选项并打印警告。
 
-        :param shelf: 所需材料所在的“架子”（顶层类别）。如果为 None 或找不到，则自动选择第一个。
-        :param book: 所需材料的“书名”（例如材料名称）。
-        :param page: 所需材料的“页码”（例如数据源名称）。如果为 None 或找不到，则自动选择第一个。
+        :param shelf: 所需材料所在的"架子"（顶层类别）。如果为 None 或找不到，则自动选择第一个。
+        :param book: 所需材料的"书名"（例如材料名称）。
+        :param page: 所需材料的"页码"（例如数据源名称）。如果为 None 或找不到，则自动选择第一个。
         :return: 找到的材料文件的完整路径字符串。
         :raises ValueError: 如果找不到指定的 book 或 catalog 为空，则抛出此异常。
         """
@@ -509,9 +498,28 @@ class RefractiveIndexMaterial:
             return (n + 1j*k)**2
         else:
             return (n - 1j*k)**2
-        
-import streamlit as st
-meterial_db_path = os.path.abspath("./assets/refractiveindex.info-database")
+
+
+# 项目内使用的材料库路径与 Streamlit 缓存加载函数（依赖 streamlit，放在模块末尾便于可选导入）
+meterial_db_path = _project_assets_db_path()
+
+try:
+    import streamlit as st
+    _has_streamlit = True
+except ImportError:
+    _has_streamlit = False
+    
+    # 创建一个空的装饰器，当streamlit不可用时使用
+    class _EmptyCache:
+        def __call__(self, func):
+            return func
+    
+    # 创建空的st对象，包含cache_data装饰器
+    class _St:
+        cache_data = _EmptyCache()
+    
+    st = _St()
+
 @st.cache_data
 def load_refractive_index():
     return RefractiveIndex(databasePath=meterial_db_path)

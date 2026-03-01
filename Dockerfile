@@ -1,29 +1,39 @@
-# 1. 选择基础镜像 (Python 3.9 Slim 版本体积较小)
-FROM python:3.9-slim
-# 2. 设置工作目录
+FROM python:3.12-slim
+
+# 使用清华 apt 镜像源加速（与 pip 一致）
+RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true \
+    && sed -i 's|security.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true \
+    && sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list 2>/dev/null || true \
+    && sed -i 's|security.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list 2>/dev/null || true \
+    && apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# 3. 安装系统依赖
-# 如果你的 C++ 代码编译需要 gcc/g++ 或者其他库 (如 libgl1 用于 opencv/matplotlib)
-# 即使是直接运行编译好的 C++，也通常需要基本的动态库
-# RUN apt-get update && apt-get install -y \
-#     build-essential \
-#     libgomp1 \
-#     && rm -rf /var/lib/apt/lists/*
+ARG REPO_URL=https://github.com/likooooo/simulation_toykits.git
+ARG ASSETS_URL=https://github.com/likooooo/simulation_toykits_assets.git
+RUN git clone "${REPO_URL}" . \
+    && git config submodule.assets.url "${ASSETS_URL}" \
+    && git submodule update --init --recursive
 
-# 4. 复制 Python 依赖并安装
-COPY requirements.txt .
+# 使用国内镜像源加速 pip 安装
+ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. 复制你的源代码 (包括 Python 和 C++ 源码/可执行文件)
-COPY . .
+COPY docker_artifacts/ /tmp/docker_artifacts/
+RUN mkdir -p /app/assets /app/libs \
+  && if [ -f /tmp/docker_artifacts/simulation.so ]; then \
+       cp /tmp/docker_artifacts/simulation.so /app/assets/ \
+       && [ -d /tmp/docker_artifacts/core_plugins ] && cp -r /tmp/docker_artifacts/core_plugins /app/assets/ \
+       && [ -d /tmp/docker_artifacts/plugin ] && cp -r /tmp/docker_artifacts/plugin /app/assets/ \
+       && [ -d /tmp/docker_artifacts/libs ] && cp -r /tmp/docker_artifacts/libs/. /app/libs/; \
+     fi \
+  && rm -rf /tmp/docker_artifacts
 
-# (可选) 如果需要在构建镜像时编译 C++ 代码
-# RUN cd cpp_engine && make
+RUN echo '/app/libs' > /etc/ld.so.conf.d/99-app-libs.conf && ldconfig
 
-# 6. 暴露 Streamlit 的默认端口
-EXPOSE 8501
+ENV LD_LIBRARY_PATH=/app/libs
 
-# 7. 启动命令
-# address=0.0.0.0 允许从 Docker 外部访问
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+EXPOSE 8052
+# 使用 shell 显式导出 LD_LIBRARY_PATH，确保 streamlit 及其子进程都能找到 .so
+CMD ["sh", "-c", "export LD_LIBRARY_PATH=/app/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} && exec streamlit run app.py --server.port=8052 --server.address=0.0.0.0"]

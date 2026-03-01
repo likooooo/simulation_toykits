@@ -1,3 +1,8 @@
 env
+.venv_gif
 __pycache__
 numpy126
+.pytest_cache
+.cursor
+.streamlit
+docker_artifacts

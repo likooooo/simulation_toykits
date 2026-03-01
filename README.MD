@@ -1,55 +1,96 @@
-### 欢迎使用 Simulation-toykits
+# Simulation-toykits
 
-Simulation-toykits 是基于 MIT 协议的开源网站, 该网站托管了一些光学仿真工具包（玩具包?）。
-
-#### 材料数据库
-材料数据来源于 [refractiveindex.info](https://refractiveindex.info/), 该数据库根据 [CC0 1.0通用公共领域专用](https://creativecommons.org/publicdomain/zero/1.0/)协议免费开放。这意味着你可以自由使用、修改和分发其内容，毫无限制，即使是商业目的，也无需许可。  
-
-#### 多层膜传输矩阵应用
-
-#### 高斯光束
-- Hermite gaussain beam
-- Laguerre gaussain beam
-- Flat top beam
+基于 [MIT 协议](https://opensource.org/licenses/MIT) 的开源光学仿真工具（玩具??）集，以 Web 应用形式提供多层膜、高斯光束与衍射等计算与可视化。
 
 ---
 
-#### 项目部署
-- 代码下载
-``` shell
-# 下载网页源代码
+## 功能概览
+
+- **Fresnel 计算器**：反射率 / 透射率、Fresnel 系数、膜系结构图；支持 [refractiveindex.info](https://refractiveindex.info/) 材料库与自定义 n/k。
+- **高斯光束**：Hermite-Gaussian、Laguerre-Gaussian、Flat-top 等（开发中）。  
+Laguerre-Gaussian 仿真示例：[下载 MP4 视频](https://github.com/likooooo/simulation_toykits_assets/raw/main/ipynb/resources/laguerre_gaussain_beam.mp4)。
+- **衍射**：Fraunhofer、Fresnel、Rayleigh-Sommerfeld 等模块（开发中）。
+
+详细使用说明见应用内「Fresnel 计算器」页的 **📖 使用说明** 及 [docs/fresnel_calculator_usage.md](https://github.com/likooooo/simulation_toykits/blob/main/docs/fresnel_calculator_usage.md)。
+
+---
+
+## 材料数据
+
+材料光学数据来源于 [refractiveindex.info](https://refractiveindex.info/)。该数据库采用 [CC0 1.0 公共领域贡献](https://creativecommons.org/publicdomain/zero/1.0/) 协议，可自由使用、修改与分发，包括商业用途，无需额外许可。
+
+---
+
+## 快速开始
+
+### 获取代码
+
+```bash
+# 克隆主仓库
 git clone https://github.com/likooooo/simulation_toykits.git
-# 下载资源文件
+cd simulation_toykits
+# 初始化资源子模块（材料库、示例等）
 git submodule update --init --recursive
 ```
-- 初始化运行环境
-``` shell
+
+### 本地运行
+
+```bash
+# 建议使用虚拟环境
 python3 -m venv env
-source ./env/bin/activate
+source env/bin/activate   # Windows: env\Scripts\activate
 pip install --no-cache-dir -r requirements.txt
+
+# 启动 Streamlit
+streamlit run app.py --server.port=8052 --server.address=0.0.0.0
+# 浏览器访问 http://localhost:8052/
 ```
 
-- 在本地启动服务
-``` shell
-streamlit run ./app.py --server.port=8501 --server.address=0.0.0.0 --server.enableCORS false --server.enableXsrfProtection false
-# 访问网页 http://localhost:8501/
-```
+### Docker 部署
 
-- 使用 docker 启动服务  
-假定您已经安装了 docker 并配置好了镜像。
-``` shell
+```bash
+# 1）准备 docker_artifacts
+./scripts/prepare_docker.sh ../simulation/build
+
+# 2）构建镜像
 docker build -t simulation-toykits:v1 .
-docker run -p 8501:8501 simulation-toykits:v1
+
+# 3）启动容器（前台运行，终端会输出日志）
+docker run -p 8052:8052 simulation-toykits:v1
 ```
-#### 其他配置
+
+---
+
+## 项目结构
 
 
-``` shell
+| 目录 / 文件     | 说明                                                                             |
+| ----------- | ------------------------------------------------------------------------------ |
+| **core/**   | 计算与业务逻辑：公式解析、膜系可视化、材料与折射率等；无全局状态依赖，便于复用与测试。                                    |
+| **pages/**  | Streamlit 页面与 UI，负责 session 状态与用户交互，计算统一调用 `core`。                             |
+| **docs/**   | 使用说明与文档（如 Fresnel 计算器、多层膜构建指令等）。                                               |
+| **test/**   | `core` 的单元测试。运行：`pip install pytest` 后执行 `python -m pytest test/ -v`（需在项目根目录）。 |
+| **assets/** | 子模块：材料数据库、示例 Notebook 等。                                                       |
 
-# 开启 WSL 的 镜像网络模式，这样 WSL 和 Windows 将共享同一个 IP，局域网内就能直接访问了
-[wsl2]
-networkingMode=mirrored
 
-# 即使 IP 一致了，Windows 的防火墙仍会拦截从外部进入 8501 端口的流量。你需要明确告诉 Windows 允许这个端口通过。
-New-NetFirewallRule -DisplayName "Streamlit-Access" -Direction Inbound -LocalPort 8501 -Protocol TCP -Action Allow
-```
+---
+
+## 可选配置
+
+**WSL2 局域网访问**：若希望在同一局域网内用其他设备访问：
+
+1. 在 `.wslconfig` 中开启镜像网络模式，使 WSL 与 Windows 共享 IP：
+  ```ini
+   [wsl2]
+   networkingMode=mirrored
+  ```
+2. 在 Windows 上放行 8052 端口（若被防火墙拦截）：
+  ```powershell
+   New-NetFirewallRule -DisplayName "Streamlit-Access" -Direction Inbound -LocalPort 8052 -Protocol TCP -Action Allow
+  ```
+
+---
+
+## 许可证
+
+本项目采用 MIT 许可证。材料数据遵循 refractiveindex.info 的 CC0 1.0 协议。
