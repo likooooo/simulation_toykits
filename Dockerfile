@@ -33,7 +33,9 @@ RUN mkdir -p /app/assets /app/libs \
 RUN echo '/app/libs' > /etc/ld.so.conf.d/99-app-libs.conf && ldconfig
 
 ENV LD_LIBRARY_PATH=/app/libs
+# 默认 8052；设为 80 可用阿里云安全组只放行 80，访问时无需写端口
+ENV PORT=8052
 
-EXPOSE 8052
+EXPOSE ${PORT}
 # 使用 shell 显式导出 LD_LIBRARY_PATH，确保 streamlit 及其子进程都能找到 .so
-CMD ["sh", "-c", "export LD_LIBRARY_PATH=/app/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} && exec streamlit run app.py --server.port=8052 --server.address=0.0.0.0"]
+CMD ["sh", "-c", "export LD_LIBRARY_PATH=/app/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} && exec streamlit run app.py --server.port=${PORT} --server.address=0.0.0.0"]
