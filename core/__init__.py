@@ -21,6 +21,7 @@ try:
     from core.spectral import (
         compute_angle_vs_RT_figures,
         compute_wavelength_vs_RT_figures,
+        compute_TE_TM_wavelength_angle_figures,
         build_nk_map_for_wavelengths,
     )
     _HAS_ASSETS = True
@@ -33,6 +34,7 @@ except (ImportError, ModuleNotFoundError):
     FresnelFilmstackResult = None
     compute_angle_vs_RT_figures = None
     compute_wavelength_vs_RT_figures = None
+    compute_TE_TM_wavelength_angle_figures = None
     build_nk_map_for_wavelengths = None
 
 __all__ = [
@@ -55,5 +57,6 @@ __all__ = [
     "FresnelFilmstackResult",
     "compute_angle_vs_RT_figures",
     "compute_wavelength_vs_RT_figures",
+    "compute_TE_TM_wavelength_angle_figures",
     "build_nk_map_for_wavelengths",
 ]

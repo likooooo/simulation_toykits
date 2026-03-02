@@ -74,6 +74,12 @@ else:
                 f"材料数据库中不存在 {name}, 该材料 nk 不会随着波长变化."
             )
 
+        st.session_state["spectral_result_wls"] = wls
+        st.session_state["spectral_result_nk_map"] = nk_map
+        st.session_state["spectral_result_layer_names"] = layer_names
+        st.session_state.pop("angular_fig_te", None)
+        st.session_state.pop("angular_fig_tm", None)
+
         try:
             with st.spinner("计算波长-反射/透射曲线…"):
                 fig_rt, fig_nk = compute_wavelength_vs_RT_figures(
@@ -83,9 +89,11 @@ else:
                     wls,
                     angle_deg,
                 )
-            st.pyplot(fig_rt)
-            plt.close(fig_rt)
-            st.pyplot(fig_nk)
-            plt.close(fig_nk)
+            st.session_state["spectral_fig_rt"] = fig_rt
+            st.session_state["spectral_fig_nk"] = fig_nk
         except Exception as e:
             st.error(f"计算失败: {e}")
+
+if "spectral_fig_rt" in st.session_state and "spectral_fig_nk" in st.session_state:
+    st.pyplot(st.session_state["spectral_fig_rt"])
+    st.pyplot(st.session_state["spectral_fig_nk"])

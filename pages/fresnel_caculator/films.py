@@ -113,29 +113,44 @@ if st.button("▶️ 计算", width="stretch", key="calculate fresnel coefficien
                     wl_um=target_wl,
                 )
             st.session_state["coating_films"] = result.tmm_layers
-
-            st.divider()
-            st.subheader(f"📊 仿真结果 (@ {target_wl} μm, {angle_deg}°)")
-            res_col1, res_col2 = st.columns(2)
-            with res_col1:
-                st.write("#### TE Mode")
-                c1, c2 = st.columns(2)
-                c1.metric("Reflectance (R)", f"{result.R_s:.4f}")
-                c2.metric("Transmittance (T)", f"{result.T_s:.4f}")
-                with st.expander("fresnel coefficients", expanded=True):
-                    st.write(f"r: `{result.r_s:.4f}`")
-                    st.write(f"t: `{result.t_s:.4f}`")
-            with res_col2:
-                st.write("#### TM Mode")
-                c3, c4 = st.columns(2)
-                c3.metric("Reflectance (R)", f"{result.R_p:.4f}")
-                c4.metric("Transmittance (T)", f"{result.T_p:.4f}")
-                with st.expander("fresnel coefficients", expanded=True):
-                    st.write(f"r: `{result.r_p:.4f}`")
-                    st.write(f"t: `{result.t_p:.4f}`")
-            st.pyplot(result.filmstack_fig)
-            plt.close(result.filmstack_fig)
+            st.session_state["film_result_cache"] = {
+                "result": result,
+                "wl": target_wl,
+                "angle": angle_deg,
+            }
+            for key in ("spectral_result_wls", "spectral_result_nk_map", "spectral_result_layer_names"):
+                st.session_state.pop(key, None)
+            st.session_state.pop("spectral_fig_rt", None)
+            st.session_state.pop("spectral_fig_nk", None)
+            st.session_state.pop("angular_fig_te", None)
+            st.session_state.pop("angular_fig_tm", None)
         except Exception as e:
             st.error(f"运行失败: {str(e)}")
             import traceback
             st.code(traceback.format_exc())
+
+if "film_result_cache" in st.session_state:
+    cache = st.session_state["film_result_cache"]
+    result = cache["result"]
+    wl_display = cache["wl"]
+    angle_display = cache["angle"]
+    st.divider()
+    st.subheader(f"📊 仿真结果 (@ {wl_display} μm, {angle_display}°)")
+    res_col1, res_col2 = st.columns(2)
+    with res_col1:
+        st.write("#### TE 模式")
+        c1, c2 = st.columns(2)
+        c1.metric("Reflectance (R)", f"{result.R_s:.4f}")
+        c2.metric("Transmittance (T)", f"{result.T_s:.4f}")
+        with st.expander("fresnel coefficients", expanded=True):
+            st.write(f"r: `{result.r_s:.4f}`")
+            st.write(f"t: `{result.t_s:.4f}`")
+    with res_col2:
+        st.write("#### TM 模式")
+        c3, c4 = st.columns(2)
+        c3.metric("Reflectance (R)", f"{result.R_p:.4f}")
+        c4.metric("Transmittance (T)", f"{result.T_p:.4f}")
+        with st.expander("fresnel coefficients", expanded=True):
+            st.write(f"r: `{result.r_p:.4f}`")
+            st.write(f"t: `{result.t_p:.4f}`")
+    st.pyplot(result.filmstack_fig)

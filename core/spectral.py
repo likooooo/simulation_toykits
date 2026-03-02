@@ -13,6 +13,12 @@ def _get_compute_RT():
     return compute_RT
 
 
+def _get_get_r_t():
+    """延迟导入，避免 CI 下加载 core.fresnel（依赖 assets.simulation）导致失败。"""
+    from core.fresnel import get_r_t
+    return get_r_t
+
+
 def compute_angle_vs_RT_figures(
     layers: List[Any],
     wl_um: float,
@@ -123,6 +129,161 @@ def compute_wavelength_vs_RT_figures(
         ax.grid(True, linestyle="--", alpha=0.7)
     fig_nk.tight_layout()
     return fig_rt, fig_nk
+
+
+def compute_TE_TM_wavelength_angle_figures(
+    layers: List[Any],
+    layer_names: List[str],
+    nk_map: Dict[str, List[complex]],
+    wls: np.ndarray,
+    angles_deg: np.ndarray,
+) -> Tuple[plt.Figure, plt.Figure]:
+    """
+    在波长-角度二维格点上计算 R、T、菲涅尔 r/t 的幅值与相位，分别绘制 TE 与 TM 两张图。
+    每张图含 6 个子图（2 行 x 3 列）：第 1 行 R、|r|、phase(r)；第 2 行 T、|t|、phase(t)。
+    横坐标波长 (μm)，纵坐标角度 (deg)。会就地修改 layers 的 .nk。
+
+    :param layers: TMM 层列表（可变，每步更新 .nk）
+    :param layer_names: 每层材料名，与 layers 同序
+    :param nk_map: 材料名 -> 该材料在各波长下的 nk 列表，长度 = len(wls)
+    :param wls: 波长数组 (μm)
+    :param angles_deg: 角度数组 (度)
+    :return: (fig_te, fig_tm)，分别为 TE 与 TM 的 6 子图
+    """
+    compute_RT = _get_compute_RT()
+    get_r_t = _get_get_r_t()
+
+    n_wl = len(wls)
+    n_ang = len(angles_deg)
+    R_s = np.zeros((n_ang, n_wl))
+    T_s = np.zeros((n_ang, n_wl))
+    r_s_mag = np.zeros((n_ang, n_wl))
+    r_s_phase = np.zeros((n_ang, n_wl))
+    t_s_mag = np.zeros((n_ang, n_wl))
+    t_s_phase = np.zeros((n_ang, n_wl))
+    R_p = np.zeros((n_ang, n_wl))
+    T_p = np.zeros((n_ang, n_wl))
+    r_p_mag = np.zeros((n_ang, n_wl))
+    r_p_phase = np.zeros((n_ang, n_wl))
+    t_p_mag = np.zeros((n_ang, n_wl))
+    t_p_phase = np.zeros((n_ang, n_wl))
+
+    for j in range(n_wl):
+        for name, layer in zip(layer_names, layers):
+            layer.nk = nk_map[name][j]
+        for i in range(n_ang):
+            th_rad = np.deg2rad(angles_deg[i])
+            R_s[i, j], T_s[i, j], R_p[i, j], T_p[i, j] = compute_RT(
+                layers, th_rad, wls[j]
+            )
+            rs, ts, rp, tp = get_r_t(layers, th_rad, wls[j])
+            r_s_mag[i, j] = np.abs(rs)
+            r_s_phase[i, j] = np.angle(rs)
+            t_s_mag[i, j] = np.abs(ts)
+            t_s_phase[i, j] = np.angle(ts)
+            r_p_mag[i, j] = np.abs(rp)
+            r_p_phase[i, j] = np.angle(rp)
+            t_p_mag[i, j] = np.abs(tp)
+            t_p_phase[i, j] = np.angle(tp)
+
+    def _plot_polarization_figure(
+        R: np.ndarray,
+        T: np.ndarray,
+        r_mag: np.ndarray,
+        r_phase: np.ndarray,
+        t_mag: np.ndarray,
+        t_phase: np.ndarray,
+        title_prefix: str,
+    ) -> plt.Figure:
+        fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+        extent = [wls[0], wls[-1], angles_deg[0], angles_deg[-1]]
+
+        # 第一行：R, |r|, phase(r)
+        im0 = axes[0, 0].imshow(
+            R,
+            extent=extent,
+            aspect="auto",
+            origin="lower",
+            interpolation="nearest",
+        )
+        axes[0, 0].set_xlabel("Wavelength (μm)")
+        axes[0, 0].set_ylabel("Angle (deg)")
+        axes[0, 0].set_title(f"{title_prefix} Reflectance R")
+        plt.colorbar(im0, ax=axes[0, 0])
+
+        im1 = axes[0, 1].imshow(
+            r_mag,
+            extent=extent,
+            aspect="auto",
+            origin="lower",
+            interpolation="nearest",
+        )
+        axes[0, 1].set_xlabel("Wavelength (μm)")
+        axes[0, 1].set_ylabel("Angle (deg)")
+        axes[0, 1].set_title(f"{title_prefix} Fresnel r (magnitude)")
+        plt.colorbar(im1, ax=axes[0, 1])
+
+        im2 = axes[0, 2].imshow(
+            r_phase,
+            extent=extent,
+            aspect="auto",
+            origin="lower",
+            interpolation="nearest",
+        )
+        axes[0, 2].set_xlabel("Wavelength (μm)")
+        axes[0, 2].set_ylabel("Angle (deg)")
+        axes[0, 2].set_title(f"{title_prefix} Fresnel r (phase)")
+        plt.colorbar(im2, ax=axes[0, 2])
+
+        # 第二行：T, |t|, phase(t)
+        im3 = axes[1, 0].imshow(
+            T,
+            extent=extent,
+            aspect="auto",
+            origin="lower",
+            interpolation="nearest",
+        )
+        axes[1, 0].set_xlabel("Wavelength (μm)")
+        axes[1, 0].set_ylabel("Angle (deg)")
+        axes[1, 0].set_title(f"{title_prefix} Transmittance T")
+        plt.colorbar(im3, ax=axes[1, 0])
+
+        im4 = axes[1, 1].imshow(
+            t_mag,
+            extent=extent,
+            aspect="auto",
+            origin="lower",
+            interpolation="nearest",
+        )
+        axes[1, 1].set_xlabel("Wavelength (μm)")
+        axes[1, 1].set_ylabel("Angle (deg)")
+        axes[1, 1].set_title(f"{title_prefix} Fresnel t (magnitude)")
+        plt.colorbar(im4, ax=axes[1, 1])
+
+        im5 = axes[1, 2].imshow(
+            t_phase,
+            extent=extent,
+            aspect="auto",
+            origin="lower",
+            interpolation="nearest",
+        )
+        axes[1, 2].set_xlabel("Wavelength (μm)")
+        axes[1, 2].set_ylabel("Angle (deg)")
+        axes[1, 2].set_title(f"{title_prefix} Fresnel t (phase)")
+        plt.colorbar(im5, ax=axes[1, 2])
+
+        for ax in axes.flat:
+            ax.grid(True, linestyle="--", alpha=0.7)
+        fig.tight_layout()
+        return fig
+
+    fig_te = _plot_polarization_figure(
+        R_s, T_s, r_s_mag, r_s_phase, t_s_mag, t_s_phase, "TE"
+    )
+    fig_tm = _plot_polarization_figure(
+        R_p, T_p, r_p_mag, r_p_phase, t_p_mag, t_p_phase, "TM"
+    )
+    return fig_te, fig_tm
 
 
 def build_nk_map_for_wavelengths(
