@@ -16,6 +16,10 @@ if [[ "$PATH_TO_BUILD" != /* ]]; then
   PATH_TO_BUILD="$REPO_ROOT/$PATH_TO_BUILD"
 fi
 
+# 在 build 目录下重新配置并编译 Release 版本（源码目录假定为 build 的上一级）
+echo "在 $PATH_TO_BUILD 下配置并编译 Release ..."
+(cd "$PATH_TO_BUILD" && cmake .. -DCMAKE_BUILD_TYPE=Release && cmake --build . --parallel)
+
 SO_PATH="$PATH_TO_BUILD/simulation.so"
 ARTIFACTS_DIR="$REPO_ROOT/docker_artifacts"
 LIBS_DIR="$ARTIFACTS_DIR/libs"
