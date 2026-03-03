@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """
-从本地或 GitHub 构建 Docker 镜像，导出 tar；若指定 --remote 则 SCP 到该主机。
+从本地或 GitHub 构建 Docker 镜像；默认仅构建，不导出 tar。可选 --export-tar 或 --remote 时再导出/部署。
 
 用法:
-  python scripts/build_and_deploy.py [path-to-build] [--remote USER@HOST] [可选参数...]
+  python scripts/build_and_deploy.py [path-to-build] [--remote USER@HOST] [--export-tar] [可选参数...]
 
 示例（由简到繁）:
-  # 仅构建并导出到 docker_artifacts/（已有 docker_artifacts 时）
+  # 仅构建镜像（默认，不导出 tar）
   python scripts/build_and_deploy.py
 
-  # 先准备 docker_artifacts 再构建并导出
+  # 先准备 docker_artifacts 再构建
   python scripts/build_and_deploy.py ../simulation/build
 
-  # 构建并传到服务器（默认传到对方 home 目录）
+  # 构建并导出 tar 到 docker_artifacts/
+  python scripts/build_and_deploy.py --export-tar
+
+  # 构建并传到服务器（会先导出 tar 再 SCP）
   python scripts/build_and_deploy.py ../simulation/build --remote user@myserver
 
   # 指定镜像标签
@@ -75,9 +78,15 @@ def main() -> int:
         default="local",
         help="local 用 Dockerfile.local，github 用 Dockerfile（默认: %(default)s）",
     )
+    parser.add_argument(
+        "--export-tar",
+        action="store_true",
+        help="将镜像导出为 tar 到 docker_artifacts/；未指定时默认不导出",
+    )
     args = parser.parse_args()
 
     do_scp = bool(args.remote)
+    do_export_tar = do_scp or args.export_tar
 
     docker_artifacts = root / "docker_artifacts"
     so_path = docker_artifacts / "simulation.so"
@@ -115,22 +124,22 @@ def main() -> int:
         ]
     )
 
-    # 导出为 tar
-    docker_artifacts.mkdir(parents=True, exist_ok=True)
-    tar_name = args.image_tag.replace("/", "-").replace(":", "-") + ".tar"
-    image_tar = docker_artifacts / tar_name
-    print(f">>> 导出镜像到 {image_tar}")
-    run(["docker", "save", args.image_tag, "-o", str(image_tar)])
-    size = image_tar.stat().st_size / (1024 * 1024)
-    print(f">>> 镜像已保存: {image_tar} ({size:.1f} MiB)")
+    if do_export_tar:
+        docker_artifacts.mkdir(parents=True, exist_ok=True)
+        tar_name = args.image_tag.replace("/", "-").replace(":", "-") + ".tar"
+        image_tar = docker_artifacts / tar_name
+        print(f">>> 导出镜像到 {image_tar}")
+        run(["docker", "save", args.image_tag, "-o", str(image_tar)])
+        size = image_tar.stat().st_size / (1024 * 1024)
+        print(f">>> 镜像已保存: {image_tar} ({size:.1f} MiB)")
 
     if do_scp:
         remote_path = f"{args.remote}:{args.remote_path.rstrip('/')}/{tar_name}"
         print(f">>> SCP 到 {remote_path}")
         run(["scp", str(image_tar), remote_path])
         print(f">>> 完成。在服务器上加载: docker load -i {args.remote_path}/{tar_name}")
-    else:
-        print(">>> 未指定 --remote，跳过 SCP")
+    elif not do_export_tar:
+        print(">>> 未指定 --export-tar 或 --remote，跳过导出 tar")
 
     print("======== 全部完成 ========")
     return 0

@@ -18,7 +18,7 @@
 
 ## 使用方式
 
-**必须从仓库根目录运行**，以便 `simulation_loader` 和 `core` 能正确加载：
+**必须从仓库根目录运行**，以便 `core.simulation_loader` 和 `core` 能正确加载：
 
 ```bash
 cd /path/to/simulation_toykits

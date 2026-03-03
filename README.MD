@@ -49,13 +49,9 @@ streamlit run app.py --server.port=8052 --server.address=0.0.0.0
 ### Docker 部署
 
 ```bash
-# 1）准备 docker_artifacts
-./scripts/prepare_docker.sh ../simulation/build
+python scripts/build_and_deploy.py
 
-# 2）构建镜像
-docker build -t simulation-toykits:v1 .
-
-# 3）启动容器（前台运行，终端会输出日志）
+# 启动容器（前台运行，终端会输出日志）
 docker run -p 8052:8052 simulation-toykits:v1
 ```
 

@@ -1,6 +1,6 @@
 """
 Fresnel 专家智能体可调用的工具层。封装 core 与 refractiveindex，无 Streamlit 依赖。
-运行时应从 simulation_toykits 仓库根目录执行，以便 simulation_loader 找到 simulation.so。
+运行时应从 simulation_toykits 仓库根目录执行，以便 core.simulation_loader 找到 simulation.so。
 """
 
 import os
@@ -181,9 +181,9 @@ def compute_filmstack(
     materials_db: 材料名 -> {Shelf ID, Book ID, Page ID}，用于从数据库取 nk。
     若某层材料名不在 materials_db 且公式中无 n k，则用 1+0j。
     """
-    import simulation_loader
+    from core import simulation_loader
     simulation_loader.get_simulation_module()
-    from assets.simulation import meterial_s
+    from simulation import meterial_s
     from core.formula import parse_formula_v1
     from core.materials import with_nk_columns, get_nk_at_wavelength
     from core.films import compute_fresnel_and_filmstack
@@ -278,12 +278,12 @@ def compute_angle_vs_rt(
     out_figure_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """固定波长，计算 R/T 随角度的变化，并可选保存曲线图。"""
-    import simulation_loader
+    from core import simulation_loader
     simulation_loader.get_simulation_module()
     from core.formula import parse_formula_v1
     from core.materials import with_nk_columns, get_nk_at_wavelength
     from core.fresnel import build_tmm_layers, compute_RT
-    from assets.simulation import meterial_s
+    from simulation import meterial_s
     from core.spectral import compute_angle_vs_RT_figures
 
     if materials_db is None:
@@ -334,12 +334,12 @@ def compute_wavelength_vs_rt(
     out_figure_nk_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """固定角度，计算 R/T 随波长的变化，可选保存 R/T 曲线图与 n-k 曲线图。"""
-    import simulation_loader
+    from core import simulation_loader
     simulation_loader.get_simulation_module()
     from core.formula import parse_formula_v1
     from core.materials import with_nk_columns, get_nk_at_wavelength
     from core.fresnel import build_tmm_layers
-    from assets.simulation import meterial_s
+    from simulation import meterial_s
     from core.spectral import compute_wavelength_vs_RT_figures, build_nk_map_for_wavelengths
 
     if materials_db is None:

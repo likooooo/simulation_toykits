@@ -3,10 +3,10 @@
 import numpy as np
 from typing import List, Tuple, Any, Callable
 
-import simulation_loader
+from core import simulation_loader
 simulation_loader.get_simulation_module()
 
-from assets.simulation import (
+from simulation import (
     meterial_s,
     TMM_propagate_direction,
     TMM_interface_transfer_matrix_with_thickness_s,
