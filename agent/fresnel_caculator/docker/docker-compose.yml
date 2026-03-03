@@ -1,0 +1,26 @@
+# Fresnel 专家智能体 · Ollama 推理服务（GPU）
+# 启动：docker compose up -d
+# 拉取模型：./pull_model.sh
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: fresnel-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  ollama_data:
+    name: fresnel_ollama_data
