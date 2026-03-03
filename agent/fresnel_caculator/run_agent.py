@@ -15,7 +15,6 @@ import json
 import os
 import sys
 
-# 确保仓库根在 path 中
 _AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(os.path.dirname(_AGENT_DIR))
 if _REPO_ROOT not in sys.path:
@@ -96,7 +95,6 @@ def main():
             print(f"[Turn {turn}] Model output:\n{content}\n", file=sys.stderr)
 
         if parsed.get("parse_error"):
-            # 未解析出合法 JSON，把原文当最终回答或提示重试
             if "answer" not in parsed and "text" not in parsed:
                 messages.append({"role": "assistant", "content": content})
                 messages.append({
@@ -108,7 +106,6 @@ def main():
         if "tool" in parsed and "arguments" in parsed:
             tool_name = parsed["tool"]
             tool_args = parsed["arguments"] or {}
-            # 将输出目录注入到可能保存文件的参数中（模型可能不写绝对路径）
             for key in ("out_path", "out_figure_path", "out_figure_rt_path", "out_figure_nk_path"):
                 val = tool_args.get(key)
                 if val is None or (isinstance(val, str) and not val.strip()):
@@ -133,7 +130,6 @@ def main():
             print(answer)
             return 0
 
-        # 无法识别：要求模型给出 answer
         messages.append({"role": "assistant", "content": content})
         messages.append({
             "role": "user",

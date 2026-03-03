@@ -1,4 +1,4 @@
-# 计算逻辑层；fresnel/films/spectral 按需懒加载（依赖 simulation.so）。
+"""计算逻辑层；fresnel/films/spectral 按需懒加载（依赖 simulation.so）。"""
 
 from core.materials import get_nk_at_wavelength, with_nk_columns
 from core.formula import parse_formula, parse_formula_v1

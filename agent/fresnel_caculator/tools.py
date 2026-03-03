@@ -1,7 +1,4 @@
-"""
-Fresnel 专家智能体可调用的工具层。封装 core 与 refractiveindex，无 Streamlit 依赖。
-运行时应从 simulation_toykits 仓库根目录执行，以便 core.simulation_loader 找到 simulation.so。
-"""
+"""Fresnel 专家智能体工具层：封装 core 与 refractiveindex。需从仓库根运行以加载 simulation.so。"""
 
 import os
 import sys
@@ -10,12 +7,11 @@ import numpy as np
 import pandas as pd
 from typing import Any, Dict, List, Tuple, Optional
 
-# 仓库根目录
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-# 材料库路径（与 core.refractiveindex 一致）
+
 def _db_path():
     return os.path.join(_REPO_ROOT, "assets", "refractiveindex.info-database")
 
@@ -40,8 +36,6 @@ def _load_nk_standalone(shelf_id: str, book_id: str, page_id: str) -> Tuple[np.n
         k = np.zeros_like(wl_um)
     return np.asarray(wl_um), np.asarray(n), np.asarray(k)
 
-
-# --------------- 材料与索引 ---------------
 
 def list_material_index(csv_path: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -107,8 +101,6 @@ def export_nk_to_csv(shelf_id: str, book_id: str, page_id: str, out_path: str) -
         return {"error": str(e), "path": out_path}
 
 
-# --------------- 膜系公式与 nk 解析 ---------------
-
 def parse_film_formula(formula: str) -> Dict[str, Any]:
     """
     解析多层膜公式，得到层列表。支持 (Material thickness)^N 与 Material thickness [n k]。
@@ -166,8 +158,6 @@ def layers_to_nk_list(
             nk_list.append(1.0 + 0.0j)
     return nk_list, None
 
-
-# --------------- 单次膜系计算（依赖 simulation.so） ---------------
 
 def compute_filmstack(
     formula: str,
@@ -268,8 +258,6 @@ def compute_filmstack_batch(
     return {"angle_deg": angle_deg, "wl_um": wl_um, "results": results}
 
 
-# --------------- 光谱曲线与角度-波长图 ---------------
-
 def compute_angle_vs_rt(
     formula: str,
     wl_um: float,
@@ -352,7 +340,6 @@ def compute_wavelength_vs_rt(
     if len(layers_data) < 2:
         return {"error": "至少需要两层", "formula": formula}
 
-    # 用中心波长先建层
     wl_center = float(np.mean(wls))
     def load_nk(s, b, p):
         if b == "Vacuum":
@@ -381,8 +368,6 @@ def compute_wavelength_vs_rt(
     return out
 
 
-# --------------- 结果导出 ---------------
-
 def save_results_csv(rows: List[Dict[str, Any]], out_path: str) -> Dict[str, Any]:
     """将结果列表（如多组膜系及其 R/T）保存为 CSV。"""
     try:
@@ -393,8 +378,6 @@ def save_results_csv(rows: List[Dict[str, Any]], out_path: str) -> Dict[str, Any
     except Exception as e:
         return {"error": str(e), "path": out_path}
 
-
-# --------------- 工具名到函数的映射（供 brain 调用） ---------------
 
 TOOLS = {
     "list_material_index": list_material_index,

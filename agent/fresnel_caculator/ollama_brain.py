@@ -9,7 +9,6 @@ import urllib.request
 import urllib.error
 from typing import Any, Dict, List, Optional
 
-# 工具列表与简要说明，供 system prompt 使用
 TOOL_SCHEMAS = [
     {
         "name": "list_material_index",
@@ -134,13 +133,11 @@ def _ollama_chat(
 def _parse_tool_or_answer(content: str) -> Dict[str, Any]:
     """从模型输出中解析出 JSON：要么 tool+arguments，要么 answer/text。"""
     content = content.strip()
-    # 尝试提取 ```json ... ``` 或 单行 {...}
     json_match = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", content)
     if json_match:
         raw = json_match.group(1)
     else:
         raw = content
-    # 取最后一个完整 JSON 对象（避免前面有说明文字）
     start = raw.rfind("{")
     if start == -1:
         return {"parse_error": content}

@@ -2,7 +2,6 @@ import streamlit as st
 from pathlib import Path
 import re
 
-# 程序开始前把 docker_artifacts 加入 sys.path，core 内可直接 import simulation
 from core import simulation_loader
 simulation_loader.ensure_artifacts_on_path()
 

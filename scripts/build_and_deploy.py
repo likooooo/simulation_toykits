@@ -91,7 +91,6 @@ def main() -> int:
     docker_artifacts = root / "docker_artifacts"
     so_path = docker_artifacts / "simulation.so"
 
-    # 需要 docker_artifacts
     if args.path_to_build:
         path_to_build = Path(args.path_to_build)
         if not path_to_build.is_absolute():
