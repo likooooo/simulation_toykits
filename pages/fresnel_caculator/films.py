@@ -8,6 +8,8 @@ from core import (
     parse_formula_v1,
     compute_fresnel_and_filmstack,
 )
+import simulation_loader
+simulation_loader.get_simulation_module()
 from assets.simulation import meterial_s
 
 ensure_fresnel_session_state()

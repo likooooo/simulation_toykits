@@ -1,16 +1,11 @@
-"""
-Fresnel / TMM 计算：传输矩阵法反射透射率。依赖 assets.simulation 的 TMM 实现，所有输入通过参数传入。
-"""
+"""Fresnel / TMM：传输矩阵法反射透射率，实现来自 simulation.so。"""
 
-import os
 import numpy as np
 from typing import List, Tuple, Any, Callable
 
-# CI 环境下不加载 simulation.so，避免缺少 libuca 等依赖导致失败
-if os.environ.get("CI"):
-    raise ImportError("assets.simulation skipped in CI")
+import simulation_loader
+simulation_loader.get_simulation_module()
 
-# TMM 实现来自 assets 子模块（.so）
 from assets.simulation import (
     meterial_s,
     TMM_propagate_direction,
@@ -30,7 +25,7 @@ def build_tmm_layers(
     """
     根据折射率列表和厚度列表构建 TMM 所需的层列表（首尾为入射与基底，中间为薄膜）。
 
-    :param material_factory: 无参调用返回具有 .nk、.depth 属性的对象（如 assets.simulation.meterial_s）
+    :param material_factory: 无参调用返回具有 .nk、.depth 属性的对象（如 meterial_s）
     :param nk_list: 每层的复折射率
     :param thickness_list: 每层厚度 (μm)，首尾通常为 0（半无限）
     :return: 供 TMM_* 使用的层列表

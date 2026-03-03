@@ -1,6 +1,4 @@
-"""
-Streamlit 页面共用的 session 状态初始化及对 core 的薄封装（仅负责从 session 取数、展示错误）。
-"""
+"""Fresnel 页面共用的 session 初始化与对 core 的薄封装。"""
 
 from core import refractiveindex as ri
 import streamlit as st

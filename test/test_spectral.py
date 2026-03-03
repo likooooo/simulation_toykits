@@ -1,4 +1,4 @@
-"""core.spectral 测试用例（不依赖 assets.simulation 的部分）"""
+"""core.spectral 测试用例（不依赖 simulation.so 的部分）"""
 
 import numpy as np
 import pytest

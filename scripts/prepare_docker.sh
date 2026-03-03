@@ -32,9 +32,9 @@ chmod +x scripts/collect_so_deps.sh
 echo "收集 simulation.so 的非系统 .so 依赖到 $LIBS_DIR ..."
 ./scripts/collect_so_deps.sh "$SO_PATH" "$LIBS_DIR"
 
-echo "复制 simulation.so、core_plugins、plugin 到 $ARTIFACTS_DIR ..."
+echo "复制 simulation.so 到 $ARTIFACTS_DIR ..."
 cp "$SO_PATH" "$ARTIFACTS_DIR/"
-[[ -d "$PATH_TO_BUILD/core_plugins" ]] && cp -r "$PATH_TO_BUILD/core_plugins" "$ARTIFACTS_DIR/"
-[[ -d "$PATH_TO_BUILD/plugin" ]]       && cp -r "$PATH_TO_BUILD/plugin" "$ARTIFACTS_DIR/"
+# [[ -d "$PATH_TO_BUILD/core_plugins" ]] && cp -r "$PATH_TO_BUILD/core_plugins" "$ARTIFACTS_DIR/"
+# [[ -d "$PATH_TO_BUILD/plugin" ]]       && cp -r "$PATH_TO_BUILD/plugin" "$ARTIFACTS_DIR/"
 
 echo "docker_artifacts 已就绪。在仓库根目录执行: docker build -t simulation-toykits:v1 ."

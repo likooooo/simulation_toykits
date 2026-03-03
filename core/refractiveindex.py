@@ -10,9 +10,6 @@ try:
 except ImportError:
     from yaml import BaseLoader
 
-# import collections
-
-
 # Commit on January 3, 2025 just prior to a major update of the database structure.
 # List of commits here: https://github.com/polyanskiy/refractiveindex.info-database/commits/master/
 _DATABASE_SHA = "451b9136b4b3566f6259b703990add5440ca125f"

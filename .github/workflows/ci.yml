@@ -28,7 +28,7 @@ jobs:
 
       - name: Run tests
         env:
-          # 跳过 assets.simulation（simulation.so）相关加载与测试，避免缺少 libuca 等依赖导致失败
+          # 跳过 simulation.so 相关加载与测试，避免缺少 libuca 等依赖导致失败
           CI: "true"
         run: |
           python -m pytest test/ -v --tb=short

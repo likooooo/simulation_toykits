@@ -1,6 +1,4 @@
-"""
-光谱曲线计算与绘图：角度- R/T、波长- R/T、材料 nk 曲线。无 st 依赖，返回 matplotlib 或 plotly 对象。
-"""
+"""角度/波长 vs R/T 与 nk 曲线计算与绘图，返回 matplotlib/plotly 对象。"""
 
 from typing import List, Dict, Any, Tuple
 import numpy as np
@@ -8,13 +6,11 @@ import matplotlib.pyplot as plt
 
 
 def _get_compute_RT():
-    """延迟导入，避免 CI 下加载 core.fresnel（依赖 assets.simulation）导致失败。"""
     from core.fresnel import compute_RT
     return compute_RT
 
 
 def _get_get_r_t():
-    """延迟导入，避免 CI 下加载 core.fresnel（依赖 assets.simulation）导致失败。"""
     from core.fresnel import get_r_t
     return get_r_t
 

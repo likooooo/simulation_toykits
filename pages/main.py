@@ -1,9 +1,8 @@
-# app.py
 import streamlit as st
 from pathlib import Path
 import re
 
-# @st.cache_data
+
 def show_markdown_file(file_path):
     path = Path(file_path)
     if path.exists():

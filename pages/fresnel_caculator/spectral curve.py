@@ -21,7 +21,6 @@ if "coating_films" not in st.session_state:
 input_layers = st.session_state["coating_films"]
 wl0 = st.session_state["wavelength"]
 
-# 固定波长下的角度 vs R/T
 with st.spinner("计算角度-反射/透射曲线…"):
     angle_figs = compute_angle_vs_RT_figures(
         input_layers, wl0, np.linspace(0, 89, 90)
