@@ -27,10 +27,18 @@ def get_simulation_module():
     ensure_artifacts_on_path()
     if "simulation" not in sys.modules:
         so_path = os.path.join(_artifacts_dir(), "simulation.so")
-        if not os.path.isfile(so_path):
+        py_path = os.path.join(_artifacts_dir(), "simulation.py")
+        if os.path.isfile(so_path):
+            import simulation  # noqa: F401
+        elif os.path.isfile(py_path):
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("simulation", py_path)
+            simulation = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(simulation)
+            sys.modules["simulation"] = simulation
+        else:
             raise FileNotFoundError(
-                f"未找到 simulation.so，请先执行: ./scripts/prepare_docker.sh <path_to_build>\n"
-                f"预期路径: {so_path}"
+                f"未找到 simulation.so 或 simulation.py，请先执行: ./scripts/prepare_docker.sh <path_to_build>\n"
+                f"预期路径: {so_path} 或 {py_path}"
             )
-        import simulation  # noqa: F401
     return sys.modules["simulation"]
