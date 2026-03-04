@@ -26,11 +26,13 @@ def get_simulation_module():
         raise ImportError("simulation skipped in CI")
     ensure_artifacts_on_path()
     if "simulation" not in sys.modules:
-        so_path = os.path.join(_artifacts_dir(), "simulation.so")
-        if not os.path.isfile(so_path):
+        artifacts = _artifacts_dir()
+        so_path = os.path.join(artifacts, "simulation.so")
+        py_path = os.path.join(artifacts, "simulation.py")
+        if not os.path.isfile(so_path) and not os.path.isfile(py_path):
             raise FileNotFoundError(
-                f"未找到 simulation.so，请先执行: ./scripts/prepare_docker.sh <path_to_build>\n"
-                f"预期路径: {so_path}"
+                f"未找到 simulation.so 或 simulation.py，请先执行: ./scripts/prepare_docker.sh <path_to_build>\n"
+                f"预期路径: {so_path} 或 {py_path}"
             )
         import simulation  # noqa: F401
     return sys.modules["simulation"]
