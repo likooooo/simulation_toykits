@@ -1,0 +1,6 @@
+[submodule "assets"]
+	path = assets
+	url = https://github.com/likooooo/simulation_toykits_assets.git
+[submodule "docker_artifacts"]
+	path = docker_artifacts
+	url = git@github.com:likooooo/simulation_toykits_docker_artifacts.git

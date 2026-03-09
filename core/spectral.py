@@ -1,0 +1,316 @@
+"""角度/波长 vs R/T 与 nk 曲线计算与绘图，返回 matplotlib/plotly 对象。"""
+
+from typing import List, Dict, Any, Tuple
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+def _get_compute_RT():
+    from core.fresnel import compute_RT
+    return compute_RT
+
+
+def _get_get_r_t():
+    from core.fresnel import get_r_t
+    return get_r_t
+
+
+def compute_angle_vs_RT_figures(
+    layers: List[Any],
+    wl_um: float,
+    angles_deg: np.ndarray,
+) -> List[plt.Figure]:
+    """
+    固定波长下计算 R/T 随角度的变化，返回一张图（Reflectance + Transmittance）。
+
+    :param layers: TMM 层列表（build_tmm_layers 的返回值）
+    :param wl_um: 波长 (μm)
+    :param angles_deg: 角度数组 (度)
+    :return: [fig]，fig 含两个子图 R、T vs angle
+    """
+    Rs, Rp = [], []
+    Ts, Tp = [], []
+    compute_RT = _get_compute_RT()
+    for ang in angles_deg:
+        th_rad = np.deg2rad(ang)
+        R_s, T_s, R_p, T_p = compute_RT(layers, th_rad, wl_um)
+        Rs.append(R_s)
+        Rp.append(R_p)
+        Ts.append(T_s)
+        Tp.append(T_p)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    ax1.plot(angles_deg, Rs, label="TE", color="blue")
+    ax1.plot(angles_deg, Rp, label="TM", color="red")
+    ax1.set_xlabel("Angle (deg)")
+    ax1.set_ylabel("Reflectance")
+    ax1.set_title(f"Reflectance (@{wl_um} μm)")
+    ax1.legend()
+    ax1.grid(True, linestyle="--", alpha=0.7)
+
+    ax2.plot(angles_deg, Ts, label="TE", color="blue")
+    ax2.plot(angles_deg, Tp, label="TM", color="red")
+    ax2.set_xlabel("Angle (deg)")
+    ax2.set_ylabel("Transmittance")
+    ax2.set_title(f"Transmittance (@{wl_um} μm)")
+    ax2.legend()
+    ax2.grid(True, linestyle="--", alpha=0.7)
+    fig.tight_layout()
+    return [fig]
+
+
+def compute_wavelength_vs_RT_figures(
+    layers: List[Any],
+    layer_names: List[str],
+    nk_map: Dict[str, List[complex]],
+    wls: np.ndarray,
+    angle_deg: float,
+) -> Tuple[plt.Figure, plt.Figure]:
+    """
+    计算 R/T 随波长的变化，并绘制材料 n-k 随波长曲线。会就地修改 layers 的 .nk。
+
+    :param layers: TMM 层列表（可变，每步更新 .nk）
+    :param layer_names: 每层材料名，与 layers 同序
+    :param nk_map: 材料名 -> 该材料在各波长下的 nk 列表，长度 = len(wls)
+    :param wls: 波长数组 (μm)
+    :param angle_deg: 入射角 (度)
+    :return: (fig_rt, fig_nk)，分别为 R/T vs 波长 与 各材料 n,k vs 波长
+    """
+    compute_RT = _get_compute_RT()
+    angle_rad = np.deg2rad(angle_deg)
+    Rs, Rp = [], []
+    Ts, Tp = [], []
+    for i in range(len(wls)):
+        for name, layer in zip(layer_names, layers):
+            layer.nk = nk_map[name][i]
+        R_s, T_s, R_p, T_p = compute_RT(layers, angle_rad, wls[i])
+        Rs.append(R_s)
+        Rp.append(R_p)
+        Ts.append(T_s)
+        Tp.append(T_p)
+
+    fig_rt, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    ax1.plot(wls, Rs, label="TE", color="blue")
+    ax1.plot(wls, Rp, label="TM", color="red")
+    ax1.set_xlabel("Wavelength (μm)")
+    ax1.set_ylabel("Reflectance")
+    ax1.set_title(f"Reflectance ({angle_deg}°)")
+    ax1.legend()
+    ax1.grid(True, linestyle="--", alpha=0.7)
+    ax2.plot(wls, Ts, label="TE", color="blue")
+    ax2.plot(wls, Tp, label="TM", color="red")
+    ax2.set_xlabel("Wavelength (μm)")
+    ax2.set_ylabel("Transmittance")
+    ax2.set_title(f"Transmittance ({angle_deg}°)")
+    ax2.legend()
+    ax2.grid(True, linestyle="--", alpha=0.7)
+    fig_rt.tight_layout()
+
+    n_materials = len(nk_map)
+    fig_nk, ax_list = plt.subplots(
+        1, max(1, n_materials), figsize=(4 * max(1, n_materials), 5)
+    )
+    if n_materials == 1:
+        ax_list = [ax_list]
+    for i, (name, nk_list) in enumerate(nk_map.items()):
+        ax = ax_list[i]
+        n_vals = [np.real(nk) for nk in nk_list]
+        k_vals = [np.imag(nk) for nk in nk_list]
+        ax.plot(wls, n_vals, label="n", color="blue")
+        ax.plot(wls, k_vals, label="k", color="red")
+        ax.set_xlabel("Wavelength (μm)")
+        ax.set_ylabel("n, k")
+        ax.set_title(name)
+        ax.legend()
+        ax.grid(True, linestyle="--", alpha=0.7)
+    fig_nk.tight_layout()
+    return fig_rt, fig_nk
+
+
+def compute_TE_TM_wavelength_angle_figures(
+    layers: List[Any],
+    layer_names: List[str],
+    nk_map: Dict[str, List[complex]],
+    wls: np.ndarray,
+    angles_deg: np.ndarray,
+) -> Tuple[plt.Figure, plt.Figure]:
+    """
+    在波长-角度二维格点上计算 R、T、菲涅尔 r/t 的幅值与相位，分别绘制 TE 与 TM 两张图。
+    每张图含 6 个子图（2 行 x 3 列）：第 1 行 R、|r|、phase(r)；第 2 行 T、|t|、phase(t)。
+    横坐标波长 (μm)，纵坐标角度 (deg)。会就地修改 layers 的 .nk。
+
+    :param layers: TMM 层列表（可变，每步更新 .nk）
+    :param layer_names: 每层材料名，与 layers 同序
+    :param nk_map: 材料名 -> 该材料在各波长下的 nk 列表，长度 = len(wls)
+    :param wls: 波长数组 (μm)
+    :param angles_deg: 角度数组 (度)
+    :return: (fig_te, fig_tm)，分别为 TE 与 TM 的 6 子图
+    """
+    compute_RT = _get_compute_RT()
+    get_r_t = _get_get_r_t()
+
+    n_wl = len(wls)
+    n_ang = len(angles_deg)
+    R_s = np.zeros((n_ang, n_wl))
+    T_s = np.zeros((n_ang, n_wl))
+    r_s_mag = np.zeros((n_ang, n_wl))
+    r_s_phase = np.zeros((n_ang, n_wl))
+    t_s_mag = np.zeros((n_ang, n_wl))
+    t_s_phase = np.zeros((n_ang, n_wl))
+    R_p = np.zeros((n_ang, n_wl))
+    T_p = np.zeros((n_ang, n_wl))
+    r_p_mag = np.zeros((n_ang, n_wl))
+    r_p_phase = np.zeros((n_ang, n_wl))
+    t_p_mag = np.zeros((n_ang, n_wl))
+    t_p_phase = np.zeros((n_ang, n_wl))
+
+    for j in range(n_wl):
+        for name, layer in zip(layer_names, layers):
+            layer.nk = nk_map[name][j]
+        for i in range(n_ang):
+            th_rad = np.deg2rad(angles_deg[i])
+            R_s[i, j], T_s[i, j], R_p[i, j], T_p[i, j] = compute_RT(
+                layers, th_rad, wls[j]
+            )
+            rs, ts, rp, tp = get_r_t(layers, th_rad, wls[j])
+            r_s_mag[i, j] = np.abs(rs)
+            r_s_phase[i, j] = np.angle(rs)
+            t_s_mag[i, j] = np.abs(ts)
+            t_s_phase[i, j] = np.angle(ts)
+            r_p_mag[i, j] = np.abs(rp)
+            r_p_phase[i, j] = np.angle(rp)
+            t_p_mag[i, j] = np.abs(tp)
+            t_p_phase[i, j] = np.angle(tp)
+
+    def _plot_polarization_figure(
+        R: np.ndarray,
+        T: np.ndarray,
+        r_mag: np.ndarray,
+        r_phase: np.ndarray,
+        t_mag: np.ndarray,
+        t_phase: np.ndarray,
+        title_prefix: str,
+    ) -> plt.Figure:
+        fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+        extent = [wls[0], wls[-1], angles_deg[0], angles_deg[-1]]
+
+        # 第一行：R, |r|, phase(r)
+        im0 = axes[0, 0].imshow(
+            R,
+            extent=extent,
+            aspect="auto",
+            origin="lower",
+            interpolation="nearest",
+        )
+        axes[0, 0].set_xlabel("Wavelength (μm)")
+        axes[0, 0].set_ylabel("Angle (deg)")
+        axes[0, 0].set_title(f"{title_prefix} Reflectance R")
+        plt.colorbar(im0, ax=axes[0, 0])
+
+        im1 = axes[0, 1].imshow(
+            r_mag,
+            extent=extent,
+            aspect="auto",
+            origin="lower",
+            interpolation="nearest",
+        )
+        axes[0, 1].set_xlabel("Wavelength (μm)")
+        axes[0, 1].set_ylabel("Angle (deg)")
+        axes[0, 1].set_title(f"{title_prefix} Fresnel r (magnitude)")
+        plt.colorbar(im1, ax=axes[0, 1])
+
+        im2 = axes[0, 2].imshow(
+            r_phase,
+            extent=extent,
+            aspect="auto",
+            origin="lower",
+            interpolation="nearest",
+        )
+        axes[0, 2].set_xlabel("Wavelength (μm)")
+        axes[0, 2].set_ylabel("Angle (deg)")
+        axes[0, 2].set_title(f"{title_prefix} Fresnel r (phase)")
+        plt.colorbar(im2, ax=axes[0, 2])
+
+        # 第二行：T, |t|, phase(t)
+        im3 = axes[1, 0].imshow(
+            T,
+            extent=extent,
+            aspect="auto",
+            origin="lower",
+            interpolation="nearest",
+        )
+        axes[1, 0].set_xlabel("Wavelength (μm)")
+        axes[1, 0].set_ylabel("Angle (deg)")
+        axes[1, 0].set_title(f"{title_prefix} Transmittance T")
+        plt.colorbar(im3, ax=axes[1, 0])
+
+        im4 = axes[1, 1].imshow(
+            t_mag,
+            extent=extent,
+            aspect="auto",
+            origin="lower",
+            interpolation="nearest",
+        )
+        axes[1, 1].set_xlabel("Wavelength (μm)")
+        axes[1, 1].set_ylabel("Angle (deg)")
+        axes[1, 1].set_title(f"{title_prefix} Fresnel t (magnitude)")
+        plt.colorbar(im4, ax=axes[1, 1])
+
+        im5 = axes[1, 2].imshow(
+            t_phase,
+            extent=extent,
+            aspect="auto",
+            origin="lower",
+            interpolation="nearest",
+        )
+        axes[1, 2].set_xlabel("Wavelength (μm)")
+        axes[1, 2].set_ylabel("Angle (deg)")
+        axes[1, 2].set_title(f"{title_prefix} Fresnel t (phase)")
+        plt.colorbar(im5, ax=axes[1, 2])
+
+        for ax in axes.flat:
+            ax.grid(True, linestyle="--", alpha=0.7)
+        fig.tight_layout()
+        return fig
+
+    fig_te = _plot_polarization_figure(
+        R_s, T_s, r_s_mag, r_s_phase, t_s_mag, t_s_phase, "TE"
+    )
+    fig_tm = _plot_polarization_figure(
+        R_p, T_p, r_p_mag, r_p_phase, t_p_mag, t_p_phase, "TM"
+    )
+    return fig_te, fig_tm
+
+
+def build_nk_map_for_wavelengths(
+    layer_names: List[str],
+    n_col: List[float],
+    k_col: List[float],
+    wls: np.ndarray,
+    materials_db: Dict[str, Any],
+    get_nk_at_wavelength_fn: Any,
+) -> Tuple[Dict[str, List[complex]], List[str]]:
+    """
+    根据层配置与波长列表构建 nk_map，并返回不在材料库中的材料名列表（用于 UI 提示）。
+
+    :param layer_names: 层材料名
+    :param n_col: 层 n 列
+    :param k_col: 层 k 列
+    :param wls: 波长数组
+    :param materials_db: 材料库 dict
+    :param get_nk_at_wavelength_fn: (name, wl_um) -> complex
+    :return: (nk_map, materials_not_in_db)
+    """
+    nk_map = {}
+    materials_not_in_db = []
+    for material_name, n, k in zip(layer_names, n_col, k_col):
+        if material_name in nk_map:
+            continue
+        if material_name not in materials_db:
+            nk_map[material_name] = [n + 1j * k] * len(wls)
+            materials_not_in_db.append(material_name)
+        else:
+            nk_map[material_name] = [
+                get_nk_at_wavelength_fn(material_name, w) for w in wls
+            ]
+    return nk_map, materials_not_in_db
