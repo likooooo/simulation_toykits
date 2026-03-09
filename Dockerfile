@@ -37,16 +37,12 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app /app
 
-# simulation.so 与 libs 放入 /app/artifacts（.dockerignore 已排除 docker_artifacts/.git 等）
-COPY docker_artifacts/ /app/artifacts/
-RUN mkdir -p /app/libs \
-  && if [ -d /app/artifacts/libs ]; then cp -r /app/artifacts/libs/. /app/libs/; fi
+# simulation.so 与依赖 .so 位于 assets/lib（submodule 已包含）
+RUN echo '/app/assets/lib' > /etc/ld.so.conf.d/99-app-libs.conf && ldconfig
 
-RUN echo '/app/libs' > /etc/ld.so.conf.d/99-app-libs.conf && ldconfig
-
-ENV LD_LIBRARY_PATH=/app/libs
+ENV LD_LIBRARY_PATH=/app/assets/lib
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PORT=8052
 
 EXPOSE ${PORT}
-CMD ["sh", "-c", "export LD_LIBRARY_PATH=/app/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} && exec streamlit run app.py --server.port=${PORT} --server.address=0.0.0.0"]
+CMD ["sh", "-c", "export LD_LIBRARY_PATH=/app/assets/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} && exec streamlit run app.py --server.port=${PORT} --server.address=0.0.0.0"]

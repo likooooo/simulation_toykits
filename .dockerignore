@@ -1,9 +1,5 @@
 # 本地构建时减小上下文、加快 COPY，避免把无关内容打进镜像
 .git
-# docker_artifacts 子模块的 git 与无关文件不打进镜像，仅用 simulation.so 与 libs
-docker_artifacts/.git
-docker_artifacts/.gitmodules
-docker_artifacts/LICENSE
 .gitignore
 .gitmodules
 *.pyc

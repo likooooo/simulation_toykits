@@ -1,8 +1,8 @@
 # 本地构建：直接使用当前目录代码，无需从 GitHub 拉取
 # 用法：在仓库根目录执行
 #   docker build -f Dockerfile.local -t simulation-toykits:v1 .
-# 构建前请确保已执行：git submodule update --init --recursive（若需 assets）
-# 以及：./scripts/prepare_docker.sh <path_to_build>（生成 docker_artifacts）
+# 构建前请确保：git submodule update --init --recursive（若需 assets）
+# 若 assets/lib 无 simulation.so，可执行：python scripts/build_and_deploy.py ../simulation/build
 
 # -----------------------------------------------------------------------------
 # 阶段 1：复制本地代码并安装依赖（不安装 git，不克隆）
@@ -23,7 +23,19 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY . .
 
 # -----------------------------------------------------------------------------
-# 阶段 2：仅保留 Python 运行时与依赖
+# 阶段 2：assets/lib（含 libuca 等）拷贝到 /tmp，再用 ldd 补充镜像内系统库
+# -----------------------------------------------------------------------------
+FROM python:3.12-slim AS so-artifacts
+
+# 先带入构建上下文中已有的 simulation.so 及自定义 .so（如 libuca.so）
+COPY --from=builder /app/assets/lib/ /tmp/
+# 将 ldd 解析出的 .so 依赖（镜像内路径）拷贝到 /tmp，-L 跟随符号链接，补齐系统库
+RUN for f in $(ldd /tmp/simulation.so 2>/dev/null | sed -n 's/.*=> \s*\([^ ]*\) .*/\1/p'); do \
+      [ -f "$f" ] && cp -L "$f" /tmp/ 2>/dev/null || true; \
+    done
+
+# -----------------------------------------------------------------------------
+# 阶段 3：仅保留 Python 运行时与依赖
 # -----------------------------------------------------------------------------
 FROM python:3.12-slim
 
@@ -33,16 +45,15 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app /app
 
-# simulation.so 与 libs 放入 /app/artifacts（.dockerignore 已排除 docker_artifacts/.git 等）
-COPY docker_artifacts/ /app/artifacts/
-RUN mkdir -p /app/libs \
-  && if [ -d /app/artifacts/libs ]; then cp -r /app/artifacts/libs/. /app/libs/; fi
+# 用 ldd 收集的 simulation.so 及依赖覆盖 /app/assets/lib
+RUN rm -rf /app/assets/lib && mkdir -p /app/assets/lib
+COPY --from=so-artifacts /tmp/ /app/assets/lib/
 
-RUN echo '/app/libs' > /etc/ld.so.conf.d/99-app-libs.conf && ldconfig
+RUN echo '/app/assets/lib' > /etc/ld.so.conf.d/99-app-libs.conf && ldconfig
 
-ENV LD_LIBRARY_PATH=/app/libs
+ENV LD_LIBRARY_PATH=/app/assets/lib
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PORT=8052
 
 EXPOSE ${PORT}
-CMD ["sh", "-c", "export LD_LIBRARY_PATH=/app/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} && exec streamlit run app.py --server.port=${PORT} --server.address=0.0.0.0"]
+CMD ["sh", "-c", "export LD_LIBRARY_PATH=/app/assets/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} && exec streamlit run app.py --server.port=${PORT} --server.address=0.0.0.0"]
