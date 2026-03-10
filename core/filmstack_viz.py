@@ -8,7 +8,7 @@ from typing import List, Dict, Tuple, Optional, Any
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import numpy as np
-
+import math
 
 class MockMaterial:
     def __init__(self, name: str, nk: complex):
@@ -39,21 +39,72 @@ def calculate_angles(
     return angles
 
 
+def wavelength_to_rgb(wavelength: float) -> Tuple[float, float, float]:
+    """将可见光波长（纳米）转换为 (r, g, b) 值"""
+    wl = max(380.0, min(750.0, wavelength))
+    
+    if 380 <= wl <= 440:
+        r, g, b = -(wl - 440) / (440 - 380), 0.0, 1.0
+    elif 440 < wl <= 490:
+        r, g, b = 0.0, (wl - 440) / (490 - 440), 1.0
+    elif 490 < wl <= 510:
+        r, g, b = 0.0, 1.0, -(wl - 510) / (510 - 490)
+    elif 510 < wl <= 580:
+        r, g, b = (wl - 510) / (580 - 510), 1.0, 0.0
+    elif 580 < wl <= 645:
+        r, g, b = 1.0, -(wl - 645) / (645 - 580), 0.0
+    elif 645 < wl <= 750:
+        r, g, b = 1.0, 0.0, 0.0
+    else:
+        r = g = b = 0.0
+
+    if 380 <= wl < 420:
+        factor = 0.3 + 0.7 * (wl - 380) / (420 - 380)
+    elif 420 <= wl <= 700:
+        factor = 1.0
+    elif 700 < wl <= 750:
+        factor = 0.3 + 0.7 * (750 - wl) / (750 - 700)
+    else:
+        factor = 0.0
+
+    gamma = 0.8
+    r_adj = (r * factor) ** gamma if r > 0 else 0.0
+    g_adj = (g * factor) ** gamma if g > 0 else 0.0
+    b_adj = (b * factor) ** gamma if b > 0 else 0.0
+
+    return r_adj, g_adj, b_adj
+
+
 def nk_to_color(
-    n: float,
-    k: float,
-    n_min: float = 1.0,
-    n_max: float = 5.0,
+    n: float, k: float,
+    n_min: float = 0.8, n_max: float = 5.0,
     k_max: float = 3.0,
+    exponent: float = 0.5,    # 控制 n 的颜色变化 0.4–0.7
+    k_log_scale: float = 50.0 # 控制小 k 对比度, 推荐 20–100
 ) -> Tuple[float, float, float]:
-    """根据 n、k 返回 (r, g, b) 元组用于绘图。"""
-    n_norm = (n - n_min) / (n_max - n_min + 1e-6)
-    H = (n_norm * 2.5) % 1.0
-    k_norm = np.clip(k / k_max, 0.0, 1.0)
-    S = 0.5 + 0.5 * (1 - k_norm)
-    V = 0.4 + 0.5 * k_norm
-    r, g, b = colorsys.hsv_to_rgb(H, S, V)
-    return (r, g, b)
+    """根据 n、k 返回 (r, g, b) 元组用于绘图"""
+
+    wl_min, wl_max = 380.0, 750.0
+    n_clamped = max(n_min, min(n_max, n))
+
+    # n → wavelength
+    t = ((n_clamped - n_min) / (n_max - n_min)) ** exponent
+    wl = wl_min + t * (wl_max - wl_min)
+
+    r_base, g_base, b_base = wavelength_to_rgb(wl)
+
+    k_clamped = max(0.0, min(k_max, k))
+
+    brightness = 1.0 - (
+        math.log1p(k_log_scale * k_clamped) /
+        math.log1p(k_log_scale * k_max)
+    )
+
+    return (
+        r_base * brightness,
+        g_base * brightness,
+        b_base * brightness
+    )
 
 
 def plot_periodic_structure(
