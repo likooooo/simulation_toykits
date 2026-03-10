@@ -9,31 +9,18 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30 # 考虑到缓存上传/下载，略微增加超时上限
 
     steps:
-      # 与 infrastructure / simulation 的 CMake 一致：build-essential, cmake, FFTW, Boost.Python, Eigen, pkg-config
-      - name: Install system dependencies (FFTW, Boost, Eigen, MPI, HDF5)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-              build-essential \
-              cmake \
-              pkg-config \
-              libfftw3-dev \
-              libboost-all-dev \
-              libeigen3-dev
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
 
       - name: Install SSH Key
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.MY_PRIVATE_KEY_1 }}
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          # 仅初始化公开子模块 assets；docker_artifacts 为私有可选仓库，CI 不初始化
-          submodules: false
 
       - name: Init optional submodules (assets only)
         run: git submodule update --init assets
@@ -43,36 +30,65 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Intel oneAPI MKL（mekil、simulation/rcwa_solver、fdtd_solver 依赖）
+      # --- 1. MKL 缓存逻辑 ---
+      - name: Cache Intel oneAPI MKL
+        id: cache-mkl
+        uses: actions/cache@v4
+        with:
+          path: /opt/intel/oneapi
+          key: ${{ runner.os }}-mkl-v1
+
       - name: Install Intel oneAPI MKL
+        if: steps.cache-mkl.outputs.cache-hit != 'true'
         run: |
           wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | gpg --dearmor | sudo tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null
           echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" | sudo tee /etc/apt/sources.list.d/oneAPI.list
           sudo apt-get update
-          sudo apt-get install -y intel-oneapi-mkl-develMKL_PATH="/opt/intel/oneapi/mkl/latest/lib/intel64"
-          echo "LD_LIBRARY_PATH=$MKL_PATH:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          sudo apt-get install -y intel-oneapi-mkl-devel
 
-      # 在安装 CUDA 前，通过 Python 脚本手动 Mock 一个虚拟 TTY 设备
+      # --- 2. CUDA 缓存逻辑 ---
+      - name: Cache CUDA Toolkit
+        id: cache-cuda
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/cuda-12.6
+          key: ${{ runner.os }}-cuda-12.6-v1
+
       - name: Fix /dev/tty for CUDA installer
+        # 无论是否命中缓存，最好都执行一下以防万一
         run: |
           sudo python3 -c 'import os; os.mknod("/dev/tty", 0o666)' || true
 
       - name: Install CUDA Toolkit
+        # 如果缓存命中，这个 Action 会识别到已存在的路径并跳过下载
         uses: Jimver/cuda-toolkit@v0.2.21
         with:
           cuda: "12.6.0"
           method: 'network'
           sub-packages: '["toolkit"]'
-          
 
-      - name: Install dependencies
+      # --- 3. 其他依赖与测试 ---
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config libfftw3-dev libboost-all-dev libeigen3-dev
+
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install --no-cache-dir -r requirements.txt
 
       - name: Run tests
         env:
-          LD_LIBRARY_PATH: ${{ github.workspace }}/assets/lib
+          # 核心修复：合并已有的 assets、MKL 和 CUDA 库路径
+          LD_LIBRARY_PATH: ${{ github.workspace }}/assets/lib:/opt/intel/oneapi/mkl/latest/lib/intel64:/usr/local/cuda-12.6/lib64
           CI: "false"
         run: |
+          # 重新激活 oneAPI 环境变量
+          if [ -f /opt/intel/oneapi/setvars.sh ]; then
+            source /opt/intel/oneapi/setvars.sh 2>/dev/null || true
+          fi
+          # 确保 CUDA 也在 PATH 中
+          export PATH=/usr/local/cuda-12.6/bin:$PATH
+          
           python -m pytest test/ -v --tb=short
