@@ -58,6 +58,12 @@ build_navigation_from_dir(
     ],
 )
 build_navigation_from_dir(pages_dict, "pages/diffraction_caculator", icon= "🎯")
+build_navigation_from_dir(
+    pages_dict,
+    "pages/pde_caculator",
+    icon="📐",
+    page_order=["Sturm Liouville"],
+)
 
 pg = st.navigation(pages_dict)
 pg.run()

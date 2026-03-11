@@ -31,6 +31,11 @@ _LAZY_MODULES = {
     "compute_hermite_gaussian": "core.beams",
     "compute_laguerre_gaussian": "core.beams",
     "show_complex_plot": "core.beams_plot",
+    "load_mat_v7": "core.sturm_liouville",
+    "sl_formula_markdown": "core.sturm_liouville",
+    "run_sturm_liouville": "core.sturm_liouville",
+    "build_result_mat": "core.sturm_liouville",
+    "plot_result_and_error": "core.sturm_liouville",
 }
 
 
@@ -71,4 +76,9 @@ __all__ = [
     "compute_hermite_gaussian",
     "compute_laguerre_gaussian",
     "show_complex_plot",
+    "load_mat_v7",
+    "sl_formula_markdown",
+    "run_sturm_liouville",
+    "build_result_mat",
+    "plot_result_and_error",
 ]
