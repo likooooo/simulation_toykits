@@ -98,24 +98,24 @@ plot_shelf, plot_book, plot_page, plot_name = (
 )
 
 if st.session_state["materials_db"]:
-    with st.expander("📊 材料列表", expanded=True):
-        summary_df = pd.DataFrame.from_dict(
-            st.session_state["materials_db"], orient="index"
-        )
-        selection_event = st.dataframe(
-            summary_df[["Book ID", "Data Source", "Shelf ID"]],
-            hide_index=True,
-            width="stretch",
-            on_select="rerun",
-            selection_mode="single-row",
-        )
-        if selection_event and selection_event.selection.rows:
-            selected_idx = selection_event.selection.rows[0]
-            row = summary_df.iloc[selected_idx]
-            plot_shelf = row["Shelf ID"]
-            plot_book = row["Book ID"]
-            plot_page = row["Page ID"]
-            plot_name = row["Material Name"]
+    st.subheader("📊 材料列表")
+    summary_df = pd.DataFrame.from_dict(
+        st.session_state["materials_db"], orient="index"
+    )
+    selection_event = st.dataframe(
+        summary_df[["Book ID", "Data Source", "Shelf ID"]],
+        hide_index=True,
+        width="stretch",
+        on_select="rerun",
+        selection_mode="single-row",
+    )
+    if selection_event and selection_event.selection.rows:
+        selected_idx = selection_event.selection.rows[0]
+        row = summary_df.iloc[selected_idx]
+        plot_shelf = row["Shelf ID"]
+        plot_book = row["Book ID"]
+        plot_page = row["Page ID"]
+        plot_name = row["Material Name"]
 
 if plot_book:
     try:

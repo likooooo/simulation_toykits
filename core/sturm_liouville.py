@@ -211,7 +211,8 @@ def plot_result_and_error(
         n_cols += 1
     if error is not None:
         n_cols += 1
-    fig, axes_arr = plt.subplots(1, n_cols, figsize=(5 * n_cols, 4))
+    # 固定总宽度 10 英寸，避免界面抖动
+    fig, axes_arr = plt.subplots(1, n_cols, figsize=(10, 4))
     if n_cols == 1:
         axes_arr = [axes_arr]
     col = 0

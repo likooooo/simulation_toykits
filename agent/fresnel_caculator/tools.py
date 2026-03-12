@@ -412,7 +412,7 @@ def compute_wavelength_vs_rt(
     nk_map, _ = build_nk_map_for_wavelengths(names, n_col, k_col, wls, materials_db, lambda name, w: get_nk_at_wavelength(materials_db, name, w, load_nk))
 
     try:
-        fig_rt, fig_nk = compute_wavelength_vs_RT_figures(tmm_layers, names, nk_map, wls, angle_deg)
+        fig_rt, fig_nk, _ = compute_wavelength_vs_RT_figures(tmm_layers, names, nk_map, wls, angle_deg)
     except Exception as e:
         return {"error": str(e), "formula": formula}
     out = {"formula": formula, "angle_deg": angle_deg, "wl_range": [wl_min_um, wl_max_um], "num_points": num_points}

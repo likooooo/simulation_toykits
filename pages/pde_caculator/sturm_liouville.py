@@ -1,8 +1,10 @@
 """Sturm-Liouville PDE calculator page: axes config, MATLAB upload, formula, compute, download."""
 
 import streamlit as st
+from common import render_table_editor, pyplot_fixed_width, save_result_mat_button
 from core import sturm_liouville
 
+# 基础配置
 BC_OPTIONS = ["periodic", "dirichlet", "neumann"]
 
 def ensure_pde_sl_session_state():
@@ -15,7 +17,6 @@ def ensure_pde_sl_session_state():
     if "pde_sl_pending_delete" not in st.session_state:
         st.session_state["pde_sl_pending_delete"] = None
 
-
 def default_axis(dim_index: int):
     return {
         "n_points": 32,
@@ -26,24 +27,37 @@ def default_axis(dim_index: int):
         "q": 0.0,
     }
 
+# --- 核心优化：回调函数处理联动，消除抖动 ---
+def update_bc_callback(idx, side):
+    """当边界条件改变时，立即同步数据，避免在渲染期间修改数据导致抖动"""
+    axes_list = st.session_state["pde_sl_axes"]
+    key_from = f"pde_sl_bcf_{idx}"
+    key_to = f"pde_sl_bct_{idx}"
+    
+    val_from = st.session_state[key_from]
+    val_to = st.session_state[key_to]
 
-def sync_periodic(axes: list):
-    """If one end is periodic, set the other to periodic."""
-    for ax in axes:
-        if ax.get("bc_from") == "periodic":
-            ax["bc_to"] = "periodic"
-        if ax.get("bc_to") == "periodic":
-            ax["bc_from"] = "periodic"
-
+    if side == "from" and val_from == "periodic":
+        st.session_state[key_to] = "periodic"
+        axes_list[idx]["bc_from"] = "periodic"
+        axes_list[idx]["bc_to"] = "periodic"
+    elif side == "to" and val_to == "periodic":
+        st.session_state[key_from] = "periodic"
+        axes_list[idx]["bc_from"] = "periodic"
+        axes_list[idx]["bc_to"] = "periodic"
+    else:
+        axes_list[idx]["bc_from"] = val_from
+        axes_list[idx]["bc_to"] = val_to
 
 def set_pending_delete(index: int):
     st.session_state["pde_sl_pending_delete"] = index
+    st.rerun()
 
-
+# --- 页面初始化 ---
 st.set_page_config(page_title="Sturm-Liouville PDE", layout="wide")
 ensure_pde_sl_session_state()
 
-# Process pending delete at start of run so it works without navigating away
+# 处理待删除任务
 idx_del = st.session_state.get("pde_sl_pending_delete")
 if idx_del is not None:
     axes_list = st.session_state["pde_sl_axes"]
@@ -65,106 +79,114 @@ if uploaded is not None:
         st.session_state["pde_sl_mat_data"] = data
         ref_shape = data.get("u", data.get("f", data.get("analytical"))).shape
         ndim = len(ref_shape)
-        # Auto-refresh axes to match dimension
-        current = st.session_state["pde_sl_axes"]
-        if len(current) != ndim:
+        
+        # 自动匹配维度
+        if len(st.session_state["pde_sl_axes"]) != ndim:
             st.session_state["pde_sl_axes"] = [
-                {
-                    **default_axis(i),
-                    "n_points": int(ref_shape[i]),
-                    "length": 1.0,
-                }
+                { **default_axis(i), "n_points": int(ref_shape[i]) }
                 for i in range(ndim)
             ]
             st.rerun()
-        st.success(f"已加载: u={'u' in data}, f={'f' in data}, analytical={'analytical' in data}, shape={ref_shape}")
+        st.success(f"已加载数据，维度: {ref_shape}")
     except Exception as e:
-        st.error(str(e))
+        st.error(f"文件读取失败: {e}")
         st.session_state["pde_sl_mat_data"] = None
 
-# --- Axes config ---
+# --- Axes config（与 films / material 统一的表格式 UI）---
 st.subheader("坐标轴配置")
-col_add, _ = st.columns([1, 3])
-with col_add:
-    if st.button("➕ 添加坐标轴", key="pde_sl_add_axis"):
-        axes.append(default_axis(len(axes)))
-        st.rerun()
 
-for i in range(len(axes)):
-    sync_periodic(axes)  # So periodic on one end auto-switches the other before we render
-    with st.expander(f"坐标轴 {i+1}", expanded=True):
-        cols = st.columns(6)
-        with cols[0]:
-            axes[i]["n_points"] = int(st.number_input("网格点数", min_value=2, value=axes[i].get("n_points", 32), key=f"pde_sl_n_{i}"))
-        with cols[1]:
-            axes[i]["length"] = float(st.number_input("域长", value=float(axes[i].get("length", 1.0)), format="%.4f", key=f"pde_sl_L_{i}"))
-        with cols[2]:
-            bc_from = st.selectbox("起点边界", BC_OPTIONS, index=BC_OPTIONS.index(axes[i].get("bc_from", "dirichlet")), key=f"pde_sl_bcf_{i}")
-            axes[i]["bc_from"] = bc_from
-            if bc_from == "periodic":
-                axes[i]["bc_to"] = "periodic"
-        with cols[3]:
-            bc_to = st.selectbox("终点边界", BC_OPTIONS, index=BC_OPTIONS.index(axes[i].get("bc_to", "dirichlet")), key=f"pde_sl_bct_{i}")
-            axes[i]["bc_to"] = bc_to
-            if bc_to == "periodic":
-                axes[i]["bc_from"] = "periodic"
-        with cols[4]:
-            axes[i]["p"] = float(st.number_input("p", value=float(axes[i].get("p", 1.0)), format="%.4f", key=f"pde_sl_p_{i}"))
-        with cols[5]:
-            axes[i]["q"] = float(st.number_input("q", value=float(axes[i].get("q", 0.0)), format="%.4f", key=f"pde_sl_q_{i}"))
-        sync_periodic(axes)
-        st.button(
-            "删除",
-            key=f"pde_sl_del_{i}",
-            on_click=set_pending_delete,
-            args=(i,),
+
+def _pde_render_row(i, item, cols):
+    with cols[0]:
+        item["n_points"] = int(st.number_input("网格点数", min_value=2, value=item["n_points"], key=f"pde_sl_n_{i}", label_visibility="collapsed"))
+    with cols[1]:
+        item["length"] = float(st.number_input("域长", value=float(item["length"]), format="%.4f", key=f"pde_sl_L_{i}", label_visibility="collapsed"))
+    with cols[2]:
+        st.selectbox(
+            "起点边界", BC_OPTIONS,
+            index=BC_OPTIONS.index(item["bc_from"]),
+            key=f"pde_sl_bcf_{i}",
+            on_change=update_bc_callback,
+            args=(i, "from"),
+            label_visibility="collapsed",
         )
+    with cols[3]:
+        st.selectbox(
+            "终点边界", BC_OPTIONS,
+            index=BC_OPTIONS.index(item["bc_to"]),
+            key=f"pde_sl_bct_{i}",
+            on_change=update_bc_callback,
+            args=(i, "to"),
+            label_visibility="collapsed",
+        )
+    with cols[4]:
+        item["p"] = float(st.number_input("p", value=float(item["p"]), format="%.4f", key=f"pde_sl_p_{i}", label_visibility="collapsed"))
+    with cols[5]:
+        item["q"] = float(st.number_input("q", value=float(item["q"]), format="%.4f", key=f"pde_sl_q_{i}", label_visibility="collapsed"))
 
-sync_periodic(axes)
 
-# --- Refresh formula ---
-st.subheader("公式")
-if st.button("刷新公式", key="pde_sl_refresh_formula"):
+def _pde_on_add():
+    axes.append(default_axis(len(axes)))
     st.rerun()
-mat_data = st.session_state.get("pde_sl_mat_data")
-has_f = bool(mat_data and "f" in mat_data)
-formula_md = sturm_liouville.sl_formula_markdown(axes, has_f=has_f)
-st.markdown(formula_md)
 
-# --- Compute ---
-st.subheader("计算")
-if st.button("计算", key="pde_sl_compute"):
-    if not axes:
-        st.error("请至少添加一个坐标轴。")
-    elif mat_data is None:
-        st.error("请先上传包含 u 或 f 的 MATLAB 文件。")
+
+def _pde_on_clear():
+    st.session_state["pde_sl_axes"] = []
+    st.rerun()
+
+
+render_table_editor(
+    key_prefix="pde_sl_axes",
+    columns=[
+        {"label": "网格点数", "width": 1},
+        {"label": "域长", "width": 1},
+        {"label": "起点边界", "width": 1.2},
+        {"label": "终点边界", "width": 1.2},
+        {"label": "p", "width": 0.8},
+        {"label": "q", "width": 0.8},
+    ],
+    items=axes,
+    render_row=_pde_render_row,
+    on_add=_pde_on_add,
+    on_clear=_pde_on_clear,
+    on_delete=set_pending_delete,
+    add_label="➕ 添加坐标轴",
+    clear_label="🗑️ 清空",
+    delete_label="删除",
+)
+
+# --- 公式、计算与结果（放入 fragment，点击计算时仅此块重跑，避免整页控件抖动）---
+@st.fragment
+def formula_compute_and_result():
+    axes = st.session_state["pde_sl_axes"]
+    mat_data = st.session_state.get("pde_sl_mat_data")
+    st.subheader("公式预览")
+    formula_md = sturm_liouville.sl_formula_markdown(axes, has_f=bool(mat_data and "f" in mat_data))
+    st.markdown(formula_md)
+
+    if st.button("▶️ 计算", width="stretch", key="pde_sl_compute"):
+        if not axes:
+            st.error("请至少添加一个坐标轴。")
+        elif mat_data is None:
+            st.error("请先上传数据。")
+        else:
+            try:
+                result = sturm_liouville.run_sturm_liouville(axes, mat_data)
+                st.session_state["pde_sl_result"] = result
+                st.success("计算完成！")
+            except Exception as e:
+                st.error(f"计算出错: {e}")
+
+    res = st.session_state.get("pde_sl_result")
+    if res:
+        st.subheader("结果可视化")
+        fig = sturm_liouville.plot_result_and_error(res["result"], res.get("error"), input_field=res.get("input_field"))
+        pyplot_fixed_width(fig)
+        mat_bytes = sturm_liouville.build_result_mat(res["result"], res.get("error"))
+        save_result_mat_button(mat_bytes, "sl_result.mat", "pde_sl_save_mat")
     else:
-        try:
-            result = sturm_liouville.run_sturm_liouville(axes, mat_data)
-            st.session_state["pde_sl_result"] = result
-            st.success("计算完成。")
-            st.rerun()
-        except Exception as e:
-            st.error(str(e))
+        st.caption("上传数据并配置坐标轴后，点击「▶️ 计算」得到结果。")
 
-# --- Result & plot ---
-st.subheader("结果")
-res = st.session_state.get("pde_sl_result")
-if res is not None:
-    fig = sturm_liouville.plot_result_and_error(
-        res["result"],
-        res.get("error"),
-        input_field=res.get("input_field"),
-    )
-    st.pyplot(fig)
-    # Download
-    mat_bytes = sturm_liouville.build_result_mat(res["result"], res.get("error"))
-    st.download_button(
-        "下载结果为 MATLAB 文件",
-        data=mat_bytes,
-        file_name="sturm_liouville_result.mat",
-        mime="application/octet-stream",
-        key="pde_sl_download",
-    )
-else:
-    st.info("上传数据并点击「计算」后显示结果。")
+            
+
+formula_compute_and_result()

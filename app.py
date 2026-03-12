@@ -5,6 +5,49 @@ import re
 from core import simulation_loader
 simulation_loader.ensure_artifacts_on_path()
 
+st.markdown(
+    """
+    <style>
+    /* 1. 强制滚动条始终显示，从根源消除宽度变化触发点 */
+    html {
+        overflow-y: scroll !important;
+    }
+
+    /* 2. 锁定 st.columns 的列宽计算 */
+    /* 我们针对所有的 column 容器，强制取消 flex-basis 的动态调整 */
+    [data-testid="column"] {
+        flex: 1 1 45% !important; /* 强制两列平分，留出冗余空间 */
+        min-width: 0 !important;
+    }
+
+    /* 3. 核心修复：禁止 Streamlit 的高度自适应监听器导致的水平抖动 */
+    [data-testid="stHorizontalBlock"] {
+        width: 100% !important;
+        display: flex !important;
+        flex-wrap: nowrap !important; /* 禁止换行，这是防止抖动的关键 */
+        align-items: flex-start !important;
+    }
+
+    /* 4. 给主容器留出足够的 padding 缓冲带，吸收滚动条带来的像素波动 */
+    [data-testid="stAppViewBlockContainer"] {
+        padding-right: 2rem !important;
+        padding-left: 2rem !important;
+    }
+
+    /* 5. 解决 iframe 环境下图片缩放触发的重算 */
+    [data-testid="stAppViewContainer"] img {
+        max-width: 100%;
+        height: auto;
+        object-fit: contain;
+    }
+
+    /* 隐藏 CSS 占位空白 */
+    .stMarkdown:has(> div > style) { display: none !important; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 def build_navigation_from_dir(pages_dict=None, base_dir="pages", icon="📄", page_order=None):
     if pages_dict is None:
         pages_dict = {}

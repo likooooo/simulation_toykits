@@ -35,6 +35,7 @@ RUN --mount=type=secret,id=SSH_PRIVATE_KEY \
     chmod 600 ~/.ssh/id_ed25519 && \
     git config --global url."git@github.com:".insteadOf https://github.com/ && \
     git clone --depth 1 "${REPO_URL}" . && \
+    git rev-parse HEAD && \
     if [ -n "$ASSETS_URL" ]; then \
         git config submodule.assets.url "${ASSETS_URL}" && \
         git submodule sync assets; \
@@ -52,4 +53,4 @@ RUN echo "${APP_LIB_PATH}" > /etc/ld.so.conf.d/99-app-libs.conf && ldconfig
 
 EXPOSE 7860
 
-CMD ["sh", "-c", ". /opt/intel/oneapi/setvars.sh --force > /dev/null 2>&1 && exec streamlit run app.py --server.port=7860 --server.address=0.0.0.0"]
+CMD ["sh", "-c", ". /opt/intel/oneapi/setvars.sh --force > /dev/null 2>&1 && exec streamlit run app.py --server.port=7860 --server.address=0.0.0.0 --server.enableCORS=false --server.enableXsrfProtection=false --client.toolbarMode=minimal"]

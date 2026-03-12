@@ -116,8 +116,8 @@ def plot_periodic_structure(
     visual_width: float = -1,
     inf_display_height: float = 100,
 ) -> plt.Figure:
-    """绘制周期性膜系结构图（射线追踪），返回 Figure 供调用方显示或保存。"""
-    fig, ax = plt.subplots(figsize=(12, 10))
+    """绘制周期性膜系结构图（射线追踪），返回 Figure 供调用方显示或保存。固定尺寸避免界面抖动。"""
+    fig, ax = plt.subplots(figsize=(10, 6))
     films = layers[1:-1]
     total_film_thickness = sum(f.d for f in films)
 

@@ -38,7 +38,10 @@ def show_complex_plot(
 
     max_x = max(p[0] for p in pos)
     max_y = max(p[1] for p in pos)
-    fig, axes = plt.subplots(max_x + 1, max_y + 1, figsize=(12, 10))
+    n_rows, n_cols = max_x + 1, max_y + 1
+    # 每个子图正方形（边长 4 英寸）
+    side = 4.0
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(side * n_cols, side * n_rows))
     fig.suptitle(f"Field Analysis: {title_prefix}", fontsize=16)
 
     is_1d_layout = max_x == 0 or max_y == 0

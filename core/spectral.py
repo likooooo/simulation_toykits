@@ -39,7 +39,7 @@ def compute_angle_vs_RT_figures(
         Ts.append(T_s)
         Tp.append(T_p)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
     ax1.plot(angles_deg, Rs, label="TE", color="blue")
     ax1.plot(angles_deg, Rp, label="TM", color="red")
     ax1.set_xlabel("Angle (deg)")
@@ -65,16 +65,11 @@ def compute_wavelength_vs_RT_figures(
     nk_map: Dict[str, List[complex]],
     wls: np.ndarray,
     angle_deg: float,
-) -> Tuple[plt.Figure, plt.Figure]:
+) -> Tuple[plt.Figure, plt.Figure, Dict[str, Any]]:
     """
     计算 R/T 随波长的变化，并绘制材料 n-k 随波长曲线。会就地修改 layers 的 .nk。
 
-    :param layers: TMM 层列表（可变，每步更新 .nk）
-    :param layer_names: 每层材料名，与 layers 同序
-    :param nk_map: 材料名 -> 该材料在各波长下的 nk 列表，长度 = len(wls)
-    :param wls: 波长数组 (μm)
-    :param angle_deg: 入射角 (度)
-    :return: (fig_rt, fig_nk)，分别为 R/T vs 波长 与 各材料 n,k vs 波长
+    :return: (fig_rt, fig_nk, data_dict)，data_dict 含 wavelength_um, R_s, R_p, T_s, T_p, angle_deg 供保存 .mat
     """
     compute_RT = _get_compute_RT()
     angle_rad = np.deg2rad(angle_deg)
@@ -89,7 +84,16 @@ def compute_wavelength_vs_RT_figures(
         Ts.append(T_s)
         Tp.append(T_p)
 
-    fig_rt, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    data = {
+        "wavelength_um": np.asarray(wls),
+        "R_s": np.asarray(Rs),
+        "R_p": np.asarray(Rp),
+        "T_s": np.asarray(Ts),
+        "T_p": np.asarray(Tp),
+        "angle_deg": float(angle_deg),
+    }
+
+    fig_rt, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
     ax1.plot(wls, Rs, label="TE", color="blue")
     ax1.plot(wls, Rp, label="TM", color="red")
     ax1.set_xlabel("Wavelength (μm)")
@@ -107,9 +111,7 @@ def compute_wavelength_vs_RT_figures(
     fig_rt.tight_layout()
 
     n_materials = len(nk_map)
-    fig_nk, ax_list = plt.subplots(
-        1, max(1, n_materials), figsize=(4 * max(1, n_materials), 5)
-    )
+    fig_nk, ax_list = plt.subplots(1, max(1, n_materials), figsize=(10, 5))
     if n_materials == 1:
         ax_list = [ax_list]
     for i, (name, nk_list) in enumerate(nk_map.items()):
@@ -124,7 +126,7 @@ def compute_wavelength_vs_RT_figures(
         ax.legend()
         ax.grid(True, linestyle="--", alpha=0.7)
     fig_nk.tight_layout()
-    return fig_rt, fig_nk
+    return fig_rt, fig_nk, data
 
 
 def compute_TE_TM_wavelength_angle_figures(
@@ -133,18 +135,13 @@ def compute_TE_TM_wavelength_angle_figures(
     nk_map: Dict[str, List[complex]],
     wls: np.ndarray,
     angles_deg: np.ndarray,
-) -> Tuple[plt.Figure, plt.Figure]:
+) -> Tuple[plt.Figure, plt.Figure, Dict[str, Any]]:
     """
     在波长-角度二维格点上计算 R、T、菲涅尔 r/t 的幅值与相位，分别绘制 TE 与 TM 两张图。
     每张图含 6 个子图（2 行 x 3 列）：第 1 行 R、|r|、phase(r)；第 2 行 T、|t|、phase(t)。
     横坐标波长 (μm)，纵坐标角度 (deg)。会就地修改 layers 的 .nk。
 
-    :param layers: TMM 层列表（可变，每步更新 .nk）
-    :param layer_names: 每层材料名，与 layers 同序
-    :param nk_map: 材料名 -> 该材料在各波长下的 nk 列表，长度 = len(wls)
-    :param wls: 波长数组 (μm)
-    :param angles_deg: 角度数组 (度)
-    :return: (fig_te, fig_tm)，分别为 TE 与 TM 的 6 子图
+    :return: (fig_te, fig_tm, data_dict)，data_dict 含 wavelength_um, angle_deg, R_s, T_s, ... 供保存 .mat
     """
     compute_RT = _get_compute_RT()
     get_r_t = _get_get_r_t()
@@ -191,7 +188,7 @@ def compute_TE_TM_wavelength_angle_figures(
         t_phase: np.ndarray,
         title_prefix: str,
     ) -> plt.Figure:
-        fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+        fig, axes = plt.subplots(2, 3, figsize=(12, 6))
         extent = [wls[0], wls[-1], angles_deg[0], angles_deg[-1]]
 
         # 第一行：R, |r|, phase(r)
@@ -279,7 +276,23 @@ def compute_TE_TM_wavelength_angle_figures(
     fig_tm = _plot_polarization_figure(
         R_p, T_p, r_p_mag, r_p_phase, t_p_mag, t_p_phase, "TM"
     )
-    return fig_te, fig_tm
+    data = {
+        "wavelength_um": wls,
+        "angle_deg": angles_deg,
+        "R_s": R_s,
+        "T_s": T_s,
+        "R_p": R_p,
+        "T_p": T_p,
+        "r_s_mag": r_s_mag,
+        "r_s_phase": r_s_phase,
+        "t_s_mag": t_s_mag,
+        "t_s_phase": t_s_phase,
+        "r_p_mag": r_p_mag,
+        "r_p_phase": r_p_phase,
+        "t_p_mag": t_p_mag,
+        "t_p_phase": t_p_phase,
+    }
+    return fig_te, fig_tm, data
 
 
 def build_nk_map_for_wavelengths(
