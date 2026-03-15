@@ -121,3 +121,15 @@ python scripts/collect_simulation.py -b ./build -o /path/to/simulation_toykits/a
 ## 许可证
 
 本项目采用 MIT 许可证。材料数据遵循 refractiveindex.info 的 CC0 1.0 协议。
+
+## TODO List
+
+- zernike 波前拟合
+- filmstack optimization
+- 绘制解空间地形图, 平坦表示鲁棒性好
+- p/q grid dependency PDE 
+- 一些 SL 的特例，比如带时间项的波动方程
+- 一些常见的微分算子的计算器
+- diffraction angle caculator
+- rayleigh length 计算器  
+- green's function

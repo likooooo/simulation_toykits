@@ -66,12 +66,12 @@ class TestLoadMatV7:
             "u": np.zeros((4, 4)),
             "f": np.zeros((3, 3)),
         })
-        with pytest.raises(ValueError, match="维度必须一致"):
+        with pytest.raises(ValueError, match="各变量维度须一致"):
             sturm_liouville.load_mat_v7(mat)
 
     def test_load_requires_at_least_one_variable(self):
-        mat = _make_mat_bytes({"x": np.zeros((2, 2))})
-        with pytest.raises(ValueError, match="未找到变量"):
+        mat = _make_mat_bytes({})
+        with pytest.raises(ValueError, match="未找到可用的数组变量"):
             sturm_liouville.load_mat_v7(mat)
 
 

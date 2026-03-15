@@ -31,14 +31,30 @@ def pyplot_fixed_width(fig, width: int = None, dpi: int = 100):
         )
 
 
-# 全 pages 统一风格的「保存结果 (.mat)」按钮
-def save_result_mat_button(data: bytes, file_name: str, key: str):
-    """渲染统一风格的保存结果 .mat 按钮。"""
+def video_fixed_width(video_bytes: bytes, format: str = "video/mp4"):
+    """与 pyplot_fixed_width 一致：视频占页宽 80%（通过 st.columns 实现）。"""
+    ratio = PYPLOT_PAGE_WIDTH_RATIO
+    left = (1 - ratio) / 2
+    right = (1 - ratio) / 2
+    cols = st.columns([left, ratio, right])
+    with cols[1]:
+        st.video(video_bytes, format=format)
+
+
+# 全 pages 统一风格的「保存结果」下载按钮（.mat / .mp4 等）
+def save_result_mat_button(data: bytes, file_name: str, key: str, label: str | None = None, mime: str | None = None):
+    """渲染统一风格的保存结果下载按钮。未传 label/mime 时按 file_name 后缀推断。"""
+    if label is None:
+        suffix = (file_name or "").strip().split(".")[-1].lower()
+        label = "💾 保存结果 (.mat)" if suffix == "mat" else (f"💾 保存结果 ({suffix})" if suffix else "💾 保存结果")
+    if mime is None:
+        suffix = (file_name or "").strip().split(".")[-1].lower()
+        mime = "video/mp4" if suffix == "mp4" else "application/octet-stream"
     return st.download_button(
-        label="💾 保存结果 (.mat)",
+        label=label,
         data=data,
         file_name=file_name,
-        mime="application/octet-stream",
+        mime=mime,
         key=key,
         width="stretch",
     )
@@ -175,6 +191,93 @@ def page_key_from_file(file_path: str) -> str:
     """Stable page key from script path, e.g. 'pages/beams_caculator/plane-wave.py' -> 'plane-wave'."""
     return Path(file_path).stem
 
+
+# PDE 计算器：缓存 key -> 用户展示名称（beams 页 stem -> 显示名；fresnel 子项用 data key）
+PDE_CACHE_KEY_TO_LABEL = {
+    "flat top beam": "Flat-Top Beam",
+    "plane wave": "Plane Wave",
+    "spherical wave": "Spherical Wave",
+    "quadratic wave": "Quadratic Wave",
+    "hermite gaussian beam": "Hermite-Gaussian Beam",
+    "laguerre gaussian beam": "Laguerre-Gaussian Beam",
+    "spectral_R_s": "光谱曲线 R_s (TE 反射)",
+    "spectral_R_p": "光谱曲线 R_p (TM 反射)",
+    "spectral_T_s": "光谱曲线 T_s (TE 透射)",
+    "spectral_T_p": "光谱曲线 T_p (TM 透射)",
+    "angular_R_s": "角度-光谱图 R_s (TE)",
+    "angular_T_s": "角度-光谱图 T_s (TE)",
+    "angular_R_p": "角度-光谱图 R_p (TM)",
+    "angular_T_p": "角度-光谱图 T_p (TM)",
+}
+
+
+def get_pde_cache_options(session_state) -> List[dict]:
+    """Collect 1D/2D arrays from beams_result_cache and fresnel caches for PDE input.
+    Returns list of {"id": str, "label": str, "array": np.ndarray} (id unique for dropdown value).
+    """
+    import numpy as np
+
+    out = []
+    # Beams: each page cache has "field" (2D complex)
+    beams = session_state.get("beams_result_cache") or {}
+    for page_key, entry in beams.items():
+        if not isinstance(entry, dict) or "field" not in entry:
+            continue
+        arr = entry["field"]
+        if not hasattr(arr, "shape") or arr.ndim < 1 or arr.ndim > 2:
+            continue
+        label = PDE_CACHE_KEY_TO_LABEL.get(page_key, f"{page_key} (场)")
+        out.append({"id": f"beams__{page_key}__field", "label": f"Beams / {label}", "array": np.asarray(arr)})
+
+    # Fresnel spectral: 1D arrays R_s, R_p, T_s, T_p
+    spectral = session_state.get("spectral_result_data") or {}
+    for key in ("R_s", "R_p", "T_s", "T_p"):
+        if key not in spectral:
+            continue
+        arr = np.asarray(spectral[key])
+        if arr.ndim != 1:
+            continue
+        label = PDE_CACHE_KEY_TO_LABEL.get(f"spectral_{key}", f"光谱曲线 {key}")
+        out.append({"id": f"fresnel__spectral__{key}", "label": f"Fresnel / {label}", "array": arr})
+
+    # Fresnel angular: 2D arrays
+    angular = session_state.get("angular_result_data") or {}
+    for key in ("R_s", "T_s", "R_p", "T_p"):
+        if key not in angular:
+            continue
+        arr = np.asarray(angular[key])
+        if arr.ndim != 2:
+            continue
+        label = PDE_CACHE_KEY_TO_LABEL.get(f"angular_{key}", f"角度-光谱图 {key}")
+        out.append({"id": f"fresnel__angular__{key}", "label": f"Fresnel / {label}", "array": arr})
+
+    # PDE 计算器本身的上次输出结果（命名为 输入名 (result)）
+    res = session_state.get("pde_sl_result")
+    if res and "result" in res:
+        arr = np.asarray(res["result"])
+        if hasattr(arr, "shape") and arr.ndim >= 1:
+            label = session_state.get("pde_sl_result_cache_label", "PDE 计算器 / 上次输出结果")
+            out.append({"id": "pde__last_result", "label": label, "array": arr})
+
+    # Time-dependent SL 上次输出（某一帧或首帧）
+    tdsl = session_state.get("pde_tdsl_result")
+    if tdsl and "frames" in tdsl and tdsl["frames"]:
+        arr = np.asarray(tdsl["frames"][0])
+        if hasattr(arr, "shape") and arr.ndim >= 1:
+            out.append({"id": "pde_tdsl__last", "label": "PDE 时变波 / 上次结果首帧", "array": arr})
+
+    # 导入的 .mat 数据（仅保留最近一次，命名如 u (文件名.mat) / analytical (文件名.mat) / u'(0) (文件名.mat)）
+    mat_import = session_state.get("pde_mat_import_cache")
+    if isinstance(mat_import, dict) and "entries" in mat_import:
+        for ent in mat_import["entries"]:
+            if isinstance(ent, dict) and "key" in ent and "label" in ent and "array" in ent:
+                arr = np.asarray(ent["array"])
+                if hasattr(arr, "shape") and arr.ndim >= 1:
+                    out.append({"id": ent.get("id", f"pde_mat__{ent['key']}"), "label": ent["label"], "array": arr})
+
+    return out
+
+
 def page_grid_init(key_prefix=""):
     """Render grid inputs, return (x_min, x_max, y_min, y_max, nx, ny)."""
     p = f"{key_prefix}_" if key_prefix else ""
@@ -267,9 +370,11 @@ def render_table_editor(
     add_label: str = "➕ 添加",
     clear_label: str = "🗑️ 清空",
     delete_label: str = "删除",
+    left_buttons: List[dict] = None,
 ) -> None:
     """
     统一表格式编辑 UI：标题行仅第一行显示，每行最后一列为删除按钮，标题前一行有添加/清空按钮。
+    - left_buttons: 可选，[{"label": str, "key": str, "on_click": callable}, ...]，显示在添加按钮左侧。
     - columns: [{"label": "列名", "width": 1}, ...]，width 为列宽比例。
     - items: 当前行数据列表（如 list of dict）。
     - render_row(row_index, item, cols): 在 cols[0], cols[1], ... 中渲染该行控件（不含删除列）。
@@ -277,12 +382,19 @@ def render_table_editor(
     """
     widths = [c["width"] for c in columns]
     op_width = 0.6
-    # 标题前一行：添加、清空
-    c_add, c_clear = st.columns(2)
-    with c_add:
+    left_buttons = left_buttons or []
+    # 标题前一行：左侧按钮（如刷新坐标轴）、添加、清空
+    n_left = len(left_buttons)
+    n_total = n_left + 2
+    row_cols = st.columns([1] * n_left + [1, 1])
+    for i, lb in enumerate(left_buttons):
+        with row_cols[i]:
+            if st.button(lb["label"], key=lb["key"], width="stretch"):
+                lb["on_click"]()
+    with row_cols[n_left]:
         if st.button(add_label, key=f"{key_prefix}_add", width="stretch"):
             on_add()
-    with c_clear:
+    with row_cols[n_left + 1]:
         if st.button(clear_label, key=f"{key_prefix}_clear", width="stretch"):
             on_clear()
     # 唯一一行标题

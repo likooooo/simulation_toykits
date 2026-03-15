@@ -87,3 +87,47 @@ def show_complex_plot(
 
     plt.tight_layout()
     return fig
+
+
+def show_complex_plot_amp_phase(
+    cplx_arr: np.ndarray,
+    meta: Dict[str, Any],
+    title_prefix: str = "",
+) -> plt.Figure:
+    """
+    Plot complex field as 1x2: Amplitude, Phase only.
+    Same extent/labels as show_complex_plot. Returns matplotlib Figure.
+    """
+    extent = None
+    xlabel, ylabel = "x (px)", "y (px)"
+    dx = meta.get("dx")
+    dy = meta.get("dy")
+    nx = meta.get("nx")
+    ny = meta.get("ny")
+    if dx is not None and dy is not None and nx is not None and ny is not None and nx > 0 and ny > 0:
+        width = nx * dx
+        height = ny * dy
+        extent = [0, width, 0, height]
+        xlabel, ylabel = "x (µm)", "y (µm)"
+
+    amplitude = np.abs(cplx_arr)
+    phase = np.angle(cplx_arr)
+
+    side = 4.0
+    fig, (ax_amp, ax_phase) = plt.subplots(1, 2, figsize=(side * 2, side))
+    fig.suptitle(f"{title_prefix}", fontsize=16)
+
+    im0 = ax_amp.imshow(amplitude, origin="lower", extent=extent, cmap="inferno")
+    ax_amp.set_title("Amplitude")
+    ax_amp.set_xlabel(xlabel)
+    ax_amp.set_ylabel(ylabel)
+    plt.colorbar(im0, ax=ax_amp)
+
+    im1 = ax_phase.imshow(phase, origin="lower", extent=extent, cmap="twilight")
+    ax_phase.set_title("Phase (rad)")
+    ax_phase.set_xlabel(xlabel)
+    ax_phase.set_ylabel(ylabel)
+    plt.colorbar(im1, ax=ax_phase)
+
+    plt.tight_layout()
+    return fig
