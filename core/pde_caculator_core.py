@@ -174,7 +174,7 @@ class sl_web_factory:
                 data = load_mat_fn(uploaded.getvalue())
                 merge_mat_into_cache_pool(st.session_state, data)
                 ref_shape = get_ref_shape_from_data(data)
-                st.success(f"已加载数据，维度: {ref_shape}, 变量名: {', '.join(sorted(data.keys()))}。" if ref_shape else "已加载数据。")
+                st.success(f"已加载数据 {', '.join(sorted(data.keys()))}。" if ref_shape else "已加载数据。")
             except Exception as e:
                 st.error(f"文件读取失败: {e}")
 

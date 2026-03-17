@@ -44,11 +44,6 @@ def load_mat_v7(file_path_or_bytes: str | bytes) -> dict[str, Any]:
     if not out:
         raise ValueError("MAT 文件中未找到可用的数组变量。")
 
-    shapes = [out[k].shape for k in out]
-    if len(shapes) > 1 and len(set(shapes)) != 1:
-        raise ValueError(
-            f"各变量维度须一致，当前: {dict((k, out[k].shape) for k in out)}"
-        )
     return out
 
 
