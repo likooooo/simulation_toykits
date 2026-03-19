@@ -85,7 +85,13 @@ build_navigation_from_dir(
     pages_dict,
     "pages/fresnel_caculator",
     icon="📊",
-    page_order=["Material Database", "Films", "Spectral Curve", "Angular Spectral Map"],
+    page_order=[
+        "Material Database",
+        "Films",
+        "Spectral Curve",
+        "Angular Spectral Map",
+        "Diffraction Angle",
+    ],
 )
 build_navigation_from_dir(
     pages_dict,

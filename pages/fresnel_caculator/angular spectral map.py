@@ -10,10 +10,6 @@ ensure_fresnel_session_state()
 st.set_page_config(page_title="Angular-spectral map", layout="wide")
 st.header("角度-光谱图")
 
-if "coating_films" not in st.session_state:
-    st.info("请先在「膜系结构」页完成计算，再查看本页。")
-    st.stop()
-
 if "spectral_result_wls" not in st.session_state:
     st.info("请先在「光谱曲线」页点击「计算」，完成波长-反射/透射曲线计算后再查看本页。")
     st.stop()

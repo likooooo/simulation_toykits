@@ -38,6 +38,12 @@ docker run -p 8052:8052 simulation-toykits:v1
 
 应用依赖 `simulation.so`（及部分 .so 依赖），统一放在 **assets/lib** 目录下，由 `core/simulation_loader.py` 按需加载。传入 simulation 的 build 目录时，`build_and_deploy.py` 会先在该目录下编译并调用 [simulation](https://github.com/likooooo/simulation) 的 `collect_simulation.py` 填充 `assets/lib`，再构建镜像。
 
+**衍射角计算器（Fresnel → Diffraction Angle）** 还会调用与 `simulation.so` 同目录下的可执行文件 **`test_diffraction`**（由 simulation 仓库 `tests/test_diffraction.cpp` 构建）。编译 simulation 后请将生成的 `test_diffraction` 复制到 `assets/lib/`（与 `simulation.so` 并列），例如在 build 目录下：
+
+```bash
+cp /path/to/simulation/build/test_diffraction /path/to/simulation_toykits/assets/lib/
+```
+
 ### build_and_deploy.py — 构建与部署 Docker 镜像
 
 构建 Docker 镜像（本地或从 GitHub 拉代码），并可选择将镜像导出为 tar 到 **dist/** 或 SCP 到远程主机。若传入 `path_to_build`，会先在该目录执行 `cmake .. -DCMAKE_BUILD_TYPE=Release` 并编译，再调用 simulation 的 `scripts/collect_simulation.py` 将 `simulation.so`、白名单 .so 及 `plugin`/`core_plugins` 收集到 `assets/lib`。
@@ -130,6 +136,5 @@ python scripts/collect_simulation.py -b ./build -o /path/to/simulation_toykits/a
 - p/q grid dependency PDE 
 - 一些 SL 的特例，比如带时间项的波动方程
 - 一些常见的微分算子的计算器
-- diffraction angle caculator
 - rayleigh length 计算器  
 - green's function
