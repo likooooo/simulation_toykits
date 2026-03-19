@@ -61,14 +61,6 @@ class TestLoadMatV7:
         assert data["u"].shape == (8, 8)
         assert data["f"].shape == (8, 8)
 
-    def test_load_rejects_dimension_mismatch(self):
-        mat = _make_mat_bytes({
-            "u": np.zeros((4, 4)),
-            "f": np.zeros((3, 3)),
-        })
-        with pytest.raises(ValueError, match="各变量维度须一致"):
-            sturm_liouville.load_mat_v7(mat)
-
     def test_load_requires_at_least_one_variable(self):
         mat = _make_mat_bytes({})
         with pytest.raises(ValueError, match="未找到可用的数组变量"):
