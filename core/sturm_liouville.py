@@ -165,7 +165,9 @@ def run_sturm_liouville(axes_config: list[dict], mat_data: dict[str, np.ndarray]
     input_field = np.asarray(mat_data[tag], dtype=np.complex128).copy()
     result = input_field.copy()
     solver.set_data_from_ndarray(result)
-    solver.init()
+    ec = solver.init()
+    if ec != sim.axis_solver_init_error.ok:
+        raise RuntimeError(f"solver.init() failed: {ec}")
     f(solver)
 
     out = {"result": result, "input_field": input_field}
@@ -228,7 +230,9 @@ def run_time_dependent_sturm_liouville(
     solver.set_bc(bc_from, bc_to)
     solver.set_coeffs(coeffs)
     solver.set_wave_speed(wave_speed)
-    solver.init(u0_f, ut0_f)
+    ec = solver.init(u0_f, ut0_f)
+    if ec != sim.axis_solver_init_error.ok:
+        raise RuntimeError(f"time_dependent solver.init() failed: {ec}")
     u0_shape = u0_f.shape
     result = np.empty(u0_shape, dtype=np.complex128)
     frames = []
