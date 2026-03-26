@@ -115,20 +115,18 @@ f.init_matlab_upload(sturm_liouville.load_mat_v7)
 f.init_cache_section(_render_cache_section_tdsl)
 f.init_axes_config()
 
-st.subheader("时间范围与波速")
-col_t1, col_t2, col_dt, col_c = st.columns(4)
+st.subheader("时间范围")
+col_t1, col_t2, col_dt = st.columns(3)
 with col_t1:
     st.number_input("t 起始", value=0.0, format="%.4f", key="pde_tdsl_t_start")
 with col_t2:
     st.number_input("t 结束", value=1.0, format="%.4f", key="pde_tdsl_t_end")
 with col_dt:
     st.number_input("时间步长 dt", value=0.05, format="%.4f", min_value=1e-6, key="pde_tdsl_dt")
-with col_c:
-    st.number_input("波速 c", value=1.0, format="%.4f", min_value=1e-6, key="pde_tdsl_c")
 
 
 def _formula_md(axes: list, data: dict | None) -> str:
-    part1 = "**波动方程** $u_{tt} = c^2 \\mathcal{L} u$，其中 $\\mathcal{L}$ 为多轴 Sturm-Liouville 算子（由坐标轴配置确定）。"
+    part1 = "**波动方程** $u_{tt} = \\mathcal{L} u$，其中 $\\mathcal{L}$ 为多轴 Sturm-Liouville 算子（由坐标轴配置确定）。"
     part2 = sturm_liouville.sl_formula_markdown(axes, has_f=False)
     return part1 + "\n\n" + part2
 
@@ -148,7 +146,6 @@ def _on_compute() -> None:
     t_start = float(st.session_state.get("pde_tdsl_t_start", 0.0))
     t_end = float(st.session_state.get("pde_tdsl_t_end", 1.0))
     dt = float(st.session_state.get("pde_tdsl_dt", 0.05))
-    wave_speed = float(st.session_state.get("pde_tdsl_c", 1.0))
     u0_arr = np.asarray(u0, dtype=np.complex128)
     ut0_arr = np.asarray(ut0, dtype=np.complex128) if ut0 is not None else None
     ref_shape = u0_arr.shape
@@ -157,7 +154,7 @@ def _on_compute() -> None:
             return
     try:
         result = sturm_liouville.run_time_dependent_sturm_liouville(
-            axes, u0_arr, ut0_arr, wave_speed, t_start, t_end, dt
+            axes, u0_arr, ut0_arr, t_start, t_end, dt
         )
         st.session_state[f._result_key] = result
         st.success("计算完成！")
@@ -185,6 +182,13 @@ def _render_result(res: dict) -> None:
 @st.fragment
 def _formula_block():
     f.init_formula_preview(_formula_md)
+    st.markdown(
+        """
+> 速度 `c` 不再单独输入。请将速度耦合到各轴系数 `p` 中：若目标方程为
+> $u_{tt} = c^2 \\mathcal{L}_0 u$，请把每个坐标轴原本的 `p` 乘以 `c^2`
+>（即使用 `p_new = c^2 \\cdot p_old`），然后直接按当前页面配置计算。
+"""
+    )
     f.init_compute_and_result(
         compute_button_label="▶️ 计算并生成视频",
         compute_key="pde_tdsl_compute",

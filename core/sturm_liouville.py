@@ -186,7 +186,6 @@ def run_time_dependent_sturm_liouville(
     axes_config: list[dict],
     u0: np.ndarray,
     ut0: np.ndarray | None,
-    wave_speed: float,
     t_start: float,
     t_end: float,
     dt: float,
@@ -229,7 +228,6 @@ def run_time_dependent_sturm_liouville(
     solver.set_lengths(lengths)
     solver.set_bc(bc_from, bc_to)
     solver.set_coeffs(coeffs)
-    solver.set_wave_speed(wave_speed)
     ec = solver.init(u0_f, ut0_f)
     if ec != sim.axis_solver_init_error.ok:
         raise RuntimeError(f"time_dependent solver.init() failed: {ec}")
