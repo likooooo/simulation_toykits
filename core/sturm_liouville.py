@@ -189,8 +189,9 @@ def run_time_dependent_sturm_liouville(
     t_start: float,
     t_end: float,
     dt: float,
+    time_derivative_order: int = 2,
 ) -> dict[str, Any]:
-    """Time-dependent wave: init(u0, ut0) once, then loop solver.solve(t) for each t.
+    """Time-dependent solver (order 1/2): init once, then loop solver.solve(t) for each t.
     u0/ut0 在函数内持有直至时间循环结束，避免 solver 不拥有内存导致悬垂引用。
     Returns {frames: list of ndarray (complex), t_vals: ndarray}.
     If ut0 is None, use zeros like u0.
@@ -212,6 +213,9 @@ def run_time_dependent_sturm_liouville(
         c.p = float(ax.get("p", 1.0))
         c.q = float(ax.get("q", 0.0))
         coeffs.append(c)
+    time_derivative_order = int(time_derivative_order)
+    if time_derivative_order not in (1, 2):
+        raise ValueError(f"time_derivative_order must be 1 or 2, got {time_derivative_order}")
 
     u0_f = np.asarray(u0, dtype=np.complex128).copy()
     if ut0 is None:
@@ -226,6 +230,7 @@ def run_time_dependent_sturm_liouville(
     solver = Solver()
     solver.set_shape(shape)
     solver.set_lengths(lengths)
+    solver.set_time_derivative_order(time_derivative_order)
     solver.set_bc(bc_from, bc_to)
     solver.set_coeffs(coeffs)
     ec = solver.init(u0_f, ut0_f)

@@ -1,4 +1,4 @@
-"""Time-dependent Sturm-Liouville 波动方程：基于 cache_pool 与 sl_web_factory。"""
+"""Time-dependent Sturm-Liouville 方程：支持时间一阶/二阶导数。"""
 
 import os
 import sys
@@ -51,14 +51,24 @@ def _frames_to_video_bytes_via_visualizer(frames, fps):
 
 
 def _render_cache_section_tdsl(key_prefix: str, options: list, keys: list, labels: list, choices: list) -> None:
-    """TDSL 选择输入：u(0) + u'(0)(可选)。"""
-    col_u0, col_ut0 = st.columns(2)
-    with col_u0:
-        idx_u0 = 0
-        if options:
-            u0_current = st.session_state.get(f"{key_prefix}_u0_key", "")
-            if u0_current in keys:
-                idx_u0 = keys.index(u0_current)
+    """TDSL 选择输入：一阶仅需 u(0)，二阶可选 u'(0)。"""
+    time_order = int(st.session_state.get("pde_tdsl_time_derivative_order", 2))
+    idx_u0 = 0
+    if options:
+        u0_current = st.session_state.get(f"{key_prefix}_u0_key", "")
+        if u0_current in keys:
+            idx_u0 = keys.index(u0_current)
+    if time_order == 1:
+        st.selectbox(
+            "u(0)",
+            range(len(choices)),
+            format_func=lambda i: choices[i],
+            index=idx_u0,
+            key=f"{key_prefix}_u0_select",
+        )
+    else:
+        col_u0, col_ut0 = st.columns(2)
+        with col_u0:
             st.selectbox(
                 "u(0)",
                 range(len(choices)),
@@ -66,24 +76,27 @@ def _render_cache_section_tdsl(key_prefix: str, options: list, keys: list, label
                 index=idx_u0,
                 key=f"{key_prefix}_u0_select",
             )
-    with col_ut0:
-        ut0_choices = ["（无）"] + labels
-        ut0_idx = 0
-        ut0_current = st.session_state.get(f"{key_prefix}_ut0_key", "")
-        if ut0_current in keys:
-            ut0_idx = keys.index(ut0_current) + 1
-        st.selectbox(
-            "u'(0)（可选项, 默认为0）",
-            range(len(ut0_choices)),
-            format_func=lambda i: ut0_choices[i],
-            index=ut0_idx,
-            key=f"{key_prefix}_ut0_select",
-        )
+        with col_ut0:
+            ut0_choices = ["（无）"] + labels
+            ut0_idx = 0
+            ut0_current = st.session_state.get(f"{key_prefix}_ut0_key", "")
+            if ut0_current in keys:
+                ut0_idx = keys.index(ut0_current) + 1
+            st.selectbox(
+                "u'(0)（可选项, 默认为0）",
+                range(len(ut0_choices)),
+                format_func=lambda i: ut0_choices[i],
+                index=ut0_idx,
+                key=f"{key_prefix}_ut0_select",
+            )
     if options and 0 <= st.session_state.get(f"{key_prefix}_u0_select", 0) < len(keys):
         st.session_state[f"{key_prefix}_u0_key"] = keys[st.session_state[f"{key_prefix}_u0_select"]]
-    ut0_sel = st.session_state.get(f"{key_prefix}_ut0_select", 0)
-    if 1 <= ut0_sel <= len(keys):
-        st.session_state[f"{key_prefix}_ut0_key"] = keys[ut0_sel - 1]
+    if time_order == 2:
+        ut0_sel = st.session_state.get(f"{key_prefix}_ut0_select", 0)
+        if 1 <= ut0_sel <= len(keys):
+            st.session_state[f"{key_prefix}_ut0_key"] = keys[ut0_sel - 1]
+        else:
+            st.session_state[f"{key_prefix}_ut0_key"] = ""
     else:
         st.session_state[f"{key_prefix}_ut0_key"] = ""
 
@@ -98,7 +111,8 @@ def _get_effective_data_tdsl(key_prefix: str):
     if u0_arr is None:
         return None
     data = {"u": u0_arr}
-    if ut0_key:
+    time_order = int(st.session_state.get("pde_tdsl_time_derivative_order", 2))
+    if time_order == 2 and ut0_key:
         ut0_arr = get_array_by_key(st.session_state, ut0_key)
         if ut0_arr is not None:
             data["ut"] = ut0_arr
@@ -109,7 +123,16 @@ st.set_page_config(page_title="Time-Dependent Sturm-Liouville", layout="wide")
 f = sl_web_factory("pde_tdsl", _get_effective_data_tdsl)
 f.run_start()
 
-st.header("Time-Dependent Sturm-Liouville 波动方程")
+st.header("Time-Dependent Sturm-Liouville 方程")
+
+st.subheader("时间导数阶数")
+st.selectbox(
+    "时间导数阶数",
+    options=[1, 2],
+    index=1,
+    key="pde_tdsl_time_derivative_order",
+    help="1: 热传导类方程 u_t = L u；2: 波动方程 u_tt = L u",
+)
 
 f.init_matlab_upload(sturm_liouville.load_mat_v7)
 f.init_cache_section(_render_cache_section_tdsl)
@@ -126,7 +149,13 @@ with col_dt:
 
 
 def _formula_md(axes: list, data: dict | None) -> str:
-    part1 = "**波动方程** $u_{tt} = \\mathcal{L} u$，其中 $\\mathcal{L}$ 为多轴 Sturm-Liouville 算子（由坐标轴配置确定）。"
+    order = int(st.session_state.get("pde_tdsl_time_derivative_order", 2))
+    lhs = r"u_t" if order == 1 else r"u_{tt}"
+    equation_name = "热传导类方程" if order == 1 else "波动方程"
+    part1 = (
+        f"**{equation_name}** ${lhs} = \\mathcal{{L}} u$，"
+        "其中 $\\mathcal{L}$ 为多轴 Sturm-Liouville 算子（由坐标轴配置确定）。"
+    )
     part2 = sturm_liouville.sl_formula_markdown(axes, has_f=False)
     return part1 + "\n\n" + part2
 
@@ -146,6 +175,7 @@ def _on_compute() -> None:
     t_start = float(st.session_state.get("pde_tdsl_t_start", 0.0))
     t_end = float(st.session_state.get("pde_tdsl_t_end", 1.0))
     dt = float(st.session_state.get("pde_tdsl_dt", 0.05))
+    time_order = int(st.session_state.get("pde_tdsl_time_derivative_order", 2))
     u0_arr = np.asarray(u0, dtype=np.complex128)
     ut0_arr = np.asarray(ut0, dtype=np.complex128) if ut0 is not None else None
     ref_shape = u0_arr.shape
@@ -154,7 +184,7 @@ def _on_compute() -> None:
             return
     try:
         result = sturm_liouville.run_time_dependent_sturm_liouville(
-            axes, u0_arr, ut0_arr, t_start, t_end, dt
+            axes, u0_arr, ut0_arr, t_start, t_end, dt, time_derivative_order=time_order
         )
         st.session_state[f._result_key] = result
         st.success("计算完成！")
@@ -185,7 +215,7 @@ def _formula_block():
     st.markdown(
         """
 > 速度 `c` 不再单独输入。请将速度耦合到各轴系数 `p` 中：若目标方程为
-> $u_{tt} = c^2 \\mathcal{L}_0 u$，请把每个坐标轴原本的 `p` 乘以 `c^2`
+> $u_{tt} = c^2 \\mathcal{L}_0 u$（或对应的一阶形式 $u_t = c^2 \\mathcal{L}_0 u$），请把每个坐标轴原本的 `p` 乘以 `c^2`
 >（即使用 `p_new = c^2 \\cdot p_old`），然后直接按当前页面配置计算。
 """
     )
