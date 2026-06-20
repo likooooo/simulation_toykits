@@ -6,22 +6,6 @@ import re
 from typing import List, Dict, Any
 
 
-def parse_formula(formula: str) -> List[Dict[str, Any]]:
-    """
-    支持格式: (H L)^10, (H 0.1 L 0.2)^5, SiO2 0.1 TiO2 0.2
-    返回 [{"Material": m, "Thickness (um)": t}, ...]
-    """
-    while "(" in formula:
-        match = re.search(r"\(([^()]+)\)\^(\d+)", formula)
-        if not match:
-            break
-        content, times = match.group(1), int(match.group(2))
-        formula = formula.replace(match.group(0), (content + " ") * times)
-
-    pairs = re.findall(r"(\S+)\s+([\d.]+)", formula)
-    return [{"Material": m, "Thickness (um)": float(t)} for m, t in pairs]
-
-
 def parse_formula_v1(formula: str) -> List[Dict[str, Any]]:
     """
     支持语法：

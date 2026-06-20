@@ -1,6 +1,5 @@
 import streamlit as st
 from pathlib import Path
-import re
 
 
 def show_markdown_file(file_path):
@@ -15,4 +14,4 @@ def show_markdown_file(file_path):
 
 st.set_page_config(page_title="Simulation toykits", layout="wide")
 
-show_markdown_file("./assets/markdown/ui/wellcome.md")
+show_markdown_file("./docs/welcome.md")

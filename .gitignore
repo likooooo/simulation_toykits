@@ -3,6 +3,7 @@ env
 .pytest_cache
 .cursor
 .streamlit
-assets
-docker_artifacts
+dist
 __pycache__
+.simulation_core
+/py_core_plugins

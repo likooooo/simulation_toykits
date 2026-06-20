@@ -1,8 +1,7 @@
-streamlit
+# Infrastructure（simulation_core 编译/测试/visualizer/GA）
+-r simulation_core/3rdparty/infrastructure/requirements.txt
+
+# simulation_toykits 应用层（勿重复 infra 已有包，如 numpy/scipy/pytest/cmake）
+streamlit>=1.33.0
 plotly
-numpy==1.26.4
-matplotlib
-pyyaml
-scipy
 pandas
-pytest

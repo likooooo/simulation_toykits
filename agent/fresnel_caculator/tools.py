@@ -1,4 +1,4 @@
-"""Fresnel 专家智能体工具层：封装 core 与 refractiveindex。需从仓库根运行以加载 simulation.so。"""
+"""Fresnel 专家智能体工具层：封装 core 与 simulation_database。需从仓库根运行以加载 simulation.so。"""
 
 import os
 import sys
@@ -12,112 +12,87 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 
-def _db_path():
-    return os.path.join(_REPO_ROOT, "assets", "refractiveindex.info-database")
-
-
-def _load_nk_standalone(shelf_id: str, book_id: str, page_id: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """从 refractiveindex 数据库加载材料 nk，返回 (波长 um, n, k)。不依赖 Streamlit。"""
-    from core.refractiveindex import RefractiveIndex
-    db_path = _db_path()
-    if not os.path.isdir(db_path):
-        raise FileNotFoundError(f"材料数据库不存在: {db_path}")
-    ri = RefractiveIndex(databasePath=db_path, auto_download=False)
-    material = ri.getMaterial(shelf=shelf_id, book=book_id, page=page_id)
-    wl_um = material.originalData["wavelength (um)"]
-    wl_nm = wl_um * 1e3
-    try:
-        n = material.getRefractiveIndex(wl_nm)
-    except Exception:
-        n = np.ones_like(wl_um)
-    try:
-        k = material.getExtinctionCoefficient(wl_nm)
-    except Exception:
-        k = np.zeros_like(wl_um)
-    return np.asarray(wl_um), np.asarray(n), np.asarray(k)
+def _material_nk_arrays(mat) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    from core.simulation_database_ui import material_nk_arrays
+    return material_nk_arrays(mat)
 
 
 def list_material_index(
     material_name: str,
     csv_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """
-    按材料名在 unique_books 中查询，返回 shelf_id、一组 page 信息（仅含 page_id）。
-    material_name 必填且不能为空。
-    """
+    """在 simulation_database materials 树中搜索材料名，返回匹配路径。"""
     key = (material_name or "").strip()
     if not key:
         return {"error": "material_name 不能为空"}
 
-    if csv_path is None:
-        csv_path = os.path.join(_db_path(), "materials_index.csv")
+    from core.simulation_database_ui import ensure_simulation_database_initialized, search_material_paths
 
-    if not os.path.isfile(csv_path):
-        return {"error": f"索引文件不存在: {csv_path}", "shelf_id": None, "books": []}
-
-    from core.material_index import load_material_index_cached
-    df = load_material_index_cached(csv_path)
-
-    if df.empty:
-        return {"shelf_id": None, "books": [], "message": "索引为空"}
-
-    cols = ["shelf_name", "shelf_id", "book_id", "page_id"]
-    if "book_name" in df.columns:
-        cols = ["shelf_name", "shelf_id", "book_id", "page_id", "book_name"]
-    unique_books = df[[c for c in cols if c in df.columns]].drop_duplicates(
-        subset=["shelf_id", "book_id", "page_id"]
-    )
-
-    mask = unique_books["book_id"].astype(str).str.strip().str.lower() == key.lower()
-    matched = unique_books.loc[mask]
-    if matched.empty:
+    sim_db = ensure_simulation_database_initialized()
+    paths = search_material_paths(sim_db, key, db_name="materials")
+    if not paths:
         return {
-            "shelf_id": None,
+            "shelf_id": "materials",
             "books": [],
             "message": f"未找到材料: {material_name}",
         }
-    first = matched.iloc[0]
-    shelf_id = str(first["shelf_id"])
-    books = [{"page_id": row["page_id"]} for _, row in matched.iterrows()]
-    return {
-        "shelf_id": shelf_id,
-        "books": books,
-    }
+    books = [{"page_id": " > ".join(p), "path": p} for p in paths[:20]]
+    return {"shelf_id": "materials", "books": books}
+
 
 def get_material_nk(
     shelf_id: str,
     book_id: str,
     page_id: str,
     ratio: float = 1,
+    materials_db: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """
-    获取指定材料的 n/k 数据（波长 um, n, k 数组）。Vacuum 返回 1+0j。
-    ratio: 采样精度，0 < ratio <= 1；为 1 时返回全部数据，为 0.5 时通过增大步长返回约一半数据。
-    """
+    """获取指定材料的 n/k 数据。优先 materials_db[book_id]，否则按 path 从数据库读取。"""
     try:
         ratio = float(ratio) if ratio is not None else 1.0
     except (TypeError, ValueError):
         ratio = 1.0
     if not (0 < ratio <= 1):
-        return {"error": "ratio 取值范围为 0 < ratio <= 1", "shelf_id": shelf_id, "book_id": book_id, "page_id": page_id}
-    if book_id == "Vacuum" or book_id.strip() == "Vacuum":
+        return {"error": "ratio 取值范围为 0 < ratio <= 1"}
+
+    if book_id == "Vacuum" or str(book_id).strip() == "Vacuum":
         return {"wavelength_um": [0.0, 1.0], "n": [1.0, 1.0], "k": [0.0, 0.0], "material": "Vacuum"}
+
+    mat = None
+    if materials_db and book_id in materials_db:
+        mat = materials_db[book_id]
+    else:
+        from core.simulation_database_ui import (
+            ensure_simulation_database_initialized,
+            read_material_by_path,
+        )
+        sim_db = ensure_simulation_database_initialized()
+        path_keys = page_id.split(" > ") if " > " in (page_id or "") else [book_id]
+        if page_id and page_id.startswith("[") is False and " > " in page_id:
+            path_keys = [p.strip() for p in page_id.split(" > ")]
+        elif materials_db is None:
+            path_keys = [book_id] if not page_id or page_id == book_id else [book_id, page_id]
+        try:
+            mat = read_material_by_path(sim_db, shelf_id or "materials", path_keys)
+        except Exception:
+            mat = None
+
+    if mat is None:
+        return {"error": f"未找到材料: {book_id}", "shelf_id": shelf_id, "book_id": book_id, "page_id": page_id}
+
     try:
-        wl, n, k = _load_nk_standalone(shelf_id, book_id, page_id)
+        wl, n, k = _material_nk_arrays(mat)
         wl = np.asarray(wl)
         n = np.asarray(n)
         k = np.asarray(k)
-        n_total = len(wl)
-        if n_total == 0:
+        if len(wl) == 0:
             return {"material": book_id, "wavelength_um": [], "n": [], "k": []}
         if ratio < 1.0:
-            n_keep = max(1, int(round(n_total * ratio)))
-            indices = np.linspace(0, n_total - 1, n_keep, dtype=int)
-            wl = wl[indices]
-            n = n[indices]
-            k = k[indices]
+            n_keep = max(1, int(round(len(wl) * ratio)))
+            indices = np.linspace(0, len(wl) - 1, n_keep, dtype=int)
+            wl, n, k = wl[indices], n[indices], k[indices]
         return {
-            "material": book_id,
+            "material": getattr(mat, "name", book_id),
             "wavelength_um": wl.tolist(),
             "n": n.tolist(),
             "k": k.tolist(),
@@ -145,11 +120,6 @@ def export_nk_to_csv(shelf_id: str, book_id: str, page_id: str, out_path: str) -
 
 
 def parse_film_formula(formula: str) -> Dict[str, Any]:
-    """
-    解析多层膜公式，得到层列表。支持 (Material thickness)^N 与 Material thickness [n k]。
-    返回每层的 Material, Thickness (um), 以及可选的 n, k。
-    如果 n,k 为空，则使用材料库中的 n,k 数据， 优先使用用户指定的page_id。
-    """
     from core.formula import parse_formula_v1
     try:
         layers = parse_formula_v1(formula)
@@ -158,27 +128,11 @@ def parse_film_formula(formula: str) -> Dict[str, Any]:
         return {"error": str(e), "formula": formula}
 
 
-def _materials_db_from_index_row(shelf_id: str, book_id: str, page_id: str, material_name: str) -> Dict[str, Dict]:
-    """单条材料构成 materials_db 的一项（key 为 material_name）。"""
-    return {
-        material_name: {
-            "Shelf ID": shelf_id,
-            "Book ID": book_id,
-            "Page ID": page_id,
-            "Material Name": material_name,
-        }
-    }
-
-
 def layers_to_nk_list(
     layers: List[Dict],
     wl_um: float,
-    materials_db: Optional[Dict[str, Dict]] = None,
+    materials_db: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[complex], Optional[str]]:
-    """
-    根据层配置与波长计算每层 nk。materials_db 的 key 为材料名，value 含 Shelf ID, Book ID, Page ID。
-    返回 (nk_list, error_message)。若某材料不在库中且无 n,k 则用 1+0j。
-    """
     from core.materials import get_nk_at_wavelength
     if materials_db is None:
         materials_db = {}
@@ -189,17 +143,7 @@ def layers_to_nk_list(
         if n_val is not None and k_val is not None:
             nk_list.append(float(n_val) + 1j * float(k_val))
             continue
-        if name == "Vacuum":
-            nk_list.append(1.0 + 0.0j)
-            continue
-        try:
-            nk = get_nk_at_wavelength(
-                materials_db, name, wl_um,
-                lambda s, b, p: _load_nk_standalone(s, b, p),
-            )
-            nk_list.append(nk)
-        except Exception:
-            nk_list.append(1.0 + 0.0j)
+        nk_list.append(get_nk_at_wavelength(materials_db, name, wl_um))
     return nk_list, None
 
 
@@ -207,17 +151,9 @@ def compute_filmstack(
     formula: str,
     angle_deg: float,
     wl_um: float,
-    materials_db: Optional[Dict[str, Dict]] = None,
+    materials_db: Optional[Dict[str, Any]] = None,
     out_figure_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """
-    解析公式、计算单波长单角度下的 R/T 与膜系图。
-    materials_db: 材料名 -> {Shelf ID, Book ID, Page ID}，用于从数据库取 nk。
-    若某层材料名不在 materials_db 且公式中无 n k，则用 1+0j。
-    """
-    from core import simulation_loader
-    simulation_loader.get_simulation_module()
-    from simulation import meterial_s
     from core.formula import parse_formula_v1
     from core.materials import with_nk_columns, get_nk_at_wavelength
     from core.films import compute_fresnel_and_filmstack
@@ -232,20 +168,17 @@ def compute_filmstack(
     if len(layers) < 2:
         return {"error": "至少需要两层（入射介质与基底）", "formula": formula}
 
-    def load_nk(shelf_id: str, book_id: str, page_id: str):
-        if book_id == "Vacuum":
-            return np.array([0, 100]), np.array([1, 1]), np.array([0, 0])
-        return _load_nk_standalone(shelf_id, book_id, page_id)
-
     df = pd.DataFrame(layers)
-    df = with_nk_columns(df, wl_um, lambda name: get_nk_at_wavelength(materials_db, name, wl_um, load_nk))
+    df = with_nk_columns(
+        df, wl_um,
+        lambda name: get_nk_at_wavelength(materials_db, name, wl_um),
+    )
     names = df["Material"].tolist()
     nk_list = [n + 1j * k for n, k in zip(df["n"].tolist(), df["k"].tolist())]
     thickness_list = df["Thickness (um)"].tolist()
 
     try:
         result = compute_fresnel_and_filmstack(
-            material_factory=lambda: meterial_s(),
             material_names=names,
             nk_list=nk_list,
             thickness_list=thickness_list,
@@ -281,11 +214,8 @@ def compute_filmstack_batch(
     formulas: List[str],
     angle_deg: float,
     wl_um: float,
-    materials_db: Optional[Dict[str, Dict]] = None,
+    materials_db: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """
-    批量计算多组膜系配置的 R/T，用于设计时筛选。返回每条公式的 R_s, T_s, R_p, T_p 及 error（若有）。
-    """
     results = []
     for formula in formulas:
         r = compute_filmstack(formula, angle_deg, wl_um, materials_db, out_figure_path=None)
@@ -303,28 +233,20 @@ def compute_filmstack_batch(
 
 
 def compute_angle_vs_rt(
-    formula: str,  # 膜系公式，如 "Vacuum 0 SiO2 0.1 Vacuum 0"，单位 μm
-    wl_um: float,  # 固定波长（微米），在此波长下计算 R/T 随角度的变化
-    materials_db: Optional[Dict[str, Dict]] = None,  # 可选；材料名 -> {Shelf ID, Book ID, Page ID}，用于从数据库取 nk；非 dict 时视为空
-    angles_deg: Optional[List[float]] = None,  # 可选；入射角列表（度），不传则默认 0~89 度共 90 个点
-    out_figure_path: Optional[str] = None,  # 可选；R/T-角度 曲线图保存路径（仅产出一张图）
-    out_figure_rt_path: Optional[str] = None,  # 可选；与 out_figure_path 等价，兼容误传
-    out_figure_nk_path: Optional[str] = None,  # 可选；与 out_figure_path 等价，兼容误传
+    formula: str,
+    wl_um: float,
+    materials_db: Optional[Dict[str, Any]] = None,
+    angles_deg: Optional[List[float]] = None,
+    out_figure_path: Optional[str] = None,
+    out_figure_rt_path: Optional[str] = None,
+    out_figure_nk_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """固定波长，计算 R/T 随角度的变化，并可选保存曲线图。
-
-    仅产出一张 R/T-角度 图；out_figure_rt_path / out_figure_nk_path 与 out_figure_path 等价（兼容误传）。
-    返回 formula, wl_um, angles_deg, figure_saved（若有保存）。
-    """
     out_figure_path = out_figure_path or out_figure_rt_path or out_figure_nk_path
     if materials_db is None or not isinstance(materials_db, dict):
         materials_db = {}
-    from core import simulation_loader
-    simulation_loader.get_simulation_module()
     from core.formula import parse_formula_v1
     from core.materials import with_nk_columns, get_nk_at_wavelength
-    from core.fresnel import build_tmm_layers, compute_RT
-    from simulation import meterial_s
+    from core.fresnel import build_tmm_layers
     from core.spectral import compute_angle_vs_RT_figures
     if angles_deg is None:
         angles_deg = np.linspace(0, 89, 90).tolist()
@@ -337,15 +259,13 @@ def compute_angle_vs_rt(
     if len(layers_data) < 2:
         return {"error": "至少需要两层", "formula": formula}
 
-    def load_nk(s, b, p):
-        if b == "Vacuum":
-            return np.array([0, 100]), np.array([1, 1]), np.array([0, 0])
-        return _load_nk_standalone(s, b, p)
-
-    df = with_nk_columns(pd.DataFrame(layers_data), wl_um, lambda n: get_nk_at_wavelength(materials_db, n, wl_um, load_nk))
+    df = with_nk_columns(
+        pd.DataFrame(layers_data), wl_um,
+        lambda n: get_nk_at_wavelength(materials_db, n, wl_um),
+    )
     nk_list = [n + 1j * k for n, k in zip(df["n"].tolist(), df["k"].tolist())]
     thickness_list = df["Thickness (um)"].tolist()
-    tmm_layers = build_tmm_layers(lambda: meterial_s(), nk_list, thickness_list)
+    tmm_layers = build_tmm_layers(nk_list, thickness_list)
 
     try:
         figs = compute_angle_vs_RT_figures(tmm_layers, wl_um, angles_deg)
@@ -374,17 +294,13 @@ def compute_wavelength_vs_rt(
     wl_min_um: float,
     wl_max_um: float,
     num_points: int = 100,
-    materials_db: Optional[Dict[str, Dict]] = None,
+    materials_db: Optional[Dict[str, Any]] = None,
     out_figure_rt_path: Optional[str] = None,
     out_figure_nk_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """固定角度，计算 R/T 随波长的变化，可选保存 R/T 曲线图与 n-k 曲线图。"""
-    from core import simulation_loader
-    simulation_loader.get_simulation_module()
     from core.formula import parse_formula_v1
     from core.materials import with_nk_columns, get_nk_at_wavelength
     from core.fresnel import build_tmm_layers
-    from simulation import meterial_s
     from core.spectral import compute_wavelength_vs_RT_figures, build_nk_map_for_wavelengths
 
     if materials_db is None:
@@ -398,21 +314,23 @@ def compute_wavelength_vs_rt(
         return {"error": "至少需要两层", "formula": formula}
 
     wl_center = float(np.mean(wls))
-    def load_nk(s, b, p):
-        if b == "Vacuum":
-            return np.array([0, 100]), np.array([1, 1]), np.array([0, 0])
-        return _load_nk_standalone(s, b, p)
-    df = with_nk_columns(pd.DataFrame(layers_data), wl_center, lambda n: get_nk_at_wavelength(materials_db, n, wl_center, load_nk))
+    df = with_nk_columns(
+        pd.DataFrame(layers_data), wl_center,
+        lambda n: get_nk_at_wavelength(materials_db, n, wl_center),
+    )
     names = df["Material"].tolist()
     n_col = df["n"].tolist()
     k_col = df["k"].tolist()
     nk_list_0 = [n + 1j * k for n, k in zip(n_col, k_col)]
     thickness_list = df["Thickness (um)"].tolist()
-    tmm_layers = build_tmm_layers(lambda: meterial_s(), nk_list_0, thickness_list)
-    nk_map, _ = build_nk_map_for_wavelengths(names, n_col, k_col, wls, materials_db, lambda name, w: get_nk_at_wavelength(materials_db, name, w, load_nk))
+    tmm_layers = build_tmm_layers(nk_list_0, thickness_list)
+    nk_map, _ = build_nk_map_for_wavelengths(
+        names, n_col, k_col, wls, materials_db,
+        lambda name, w: get_nk_at_wavelength(materials_db, name, w),
+    )
 
     try:
-        fig_rt, fig_nk = compute_wavelength_vs_RT_figures(tmm_layers, names, nk_map, wls, angle_deg)
+        fig_rt, fig_nk, _ = compute_wavelength_vs_RT_figures(tmm_layers, names, nk_map, wls, angle_deg)
     except Exception as e:
         return {"error": str(e), "formula": formula}
     out = {"formula": formula, "angle_deg": angle_deg, "wl_range": [wl_min_um, wl_max_um], "num_points": num_points}
@@ -426,7 +344,6 @@ def compute_wavelength_vs_rt(
 
 
 def save_results_csv(rows: List[Dict[str, Any]], out_path: str) -> Dict[str, Any]:
-    """将结果列表（如多组膜系及其 R/T）保存为 CSV。"""
     try:
         os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
         df = pd.DataFrame(rows)
@@ -450,7 +367,6 @@ TOOLS = {
 
 
 def _to_json_safe(obj: Any) -> Any:
-    """将 numpy 等类型转为 JSON 可序列化。"""
     if isinstance(obj, dict):
         return {k: _to_json_safe(v) for k, v in obj.items()}
     if isinstance(obj, list):
@@ -465,7 +381,6 @@ def _to_json_safe(obj: Any) -> Any:
 
 
 def run_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-    """执行指定工具并返回可 JSON 序列化的结果。"""
     if name not in TOOLS:
         return {"error": f"未知工具: {name}", "available": list(TOOLS.keys())}
     fn = TOOLS[name]

@@ -2,7 +2,7 @@
 膜系单次计算：Fresnel 系数 + 膜系结构图。一次调用返回所有结果，无 st 依赖。
 """
 
-from typing import List, Any, Callable, NamedTuple
+from typing import List, Any, NamedTuple
 import numpy as np
 
 from core.fresnel import build_tmm_layers, compute_RT, get_r_t
@@ -30,7 +30,6 @@ class FresnelFilmstackResult(NamedTuple):
 
 
 def compute_fresnel_and_filmstack(
-    material_factory: Callable[[], Any],
     material_names: List[str],
     nk_list: List[complex],
     thickness_list: List[float],
@@ -40,7 +39,6 @@ def compute_fresnel_and_filmstack(
     """
     计算单波长单角度下的 Fresnel R/T、r/t，并绘制膜系结构图。无 st 依赖。
 
-    :param material_factory: 无参调用返回 TMM 层对象（如 lambda: meterial_s()）
     :param material_names: 每层材料名
     :param nk_list: 每层复折射率
     :param thickness_list: 每层厚度 (μm)
@@ -48,9 +46,7 @@ def compute_fresnel_and_filmstack(
     :param wl_um: 波长 (μm)
     :return: FresnelFilmstackResult，含 tmm_layers、R_s/T_s/R_p/T_p、r_s/t_s/r_p/t_p、filmstack_fig
     """
-    tmm_layers = build_tmm_layers(
-        material_factory, nk_list, thickness_list
-    )
+    tmm_layers = build_tmm_layers(nk_list, thickness_list)
     th_0_rad = np.deg2rad(angle_deg)
     R_s, T_s, R_p, T_p = compute_RT(tmm_layers, th_0_rad, wl_um)
     r_s, t_s, r_p, t_p = get_r_t(tmm_layers, th_0_rad, wl_um)

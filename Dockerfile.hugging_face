@@ -1,0 +1,48 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH" \
+    APP_LIB_PATH=/app/.simulation_core
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git git-lfs openssh-client \
+    python3 python3-dev python3-venv \
+    && python3 -m venv /opt/venv \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG REPO_URL=git@github.com:likooooo/simulation_toykits.git
+ARG BUILD_TIME=""
+
+RUN --mount=type=secret,id=SSH_PRIVATE_KEY \
+    mkdir -p ~/.ssh && chmod 700 ~/.ssh && \
+    ssh-keyscan github.com >> ~/.ssh/known_hosts && \
+    cat /run/secrets/SSH_PRIVATE_KEY | tr -d '\r' > ~/.ssh/id_ed25519 && \
+    chmod 600 ~/.ssh/id_ed25519 && \
+    git config --global url."git@github.com:".insteadOf https://github.com/ && \
+    git clone --depth 1 "${REPO_URL}" . && \
+    git rev-parse HEAD && \
+    git submodule update --init --recursive --depth 1 simulation_core && \
+    rm -rf ~/.ssh && \
+    rm -rf simulation_core/build simulation_core/tests && \
+    rm -rf simulation_core/3rdparty/fdtd_solver simulation_core/3rdparty/rcwa_solver && \
+    find simulation_core/assets -mindepth 1 -maxdepth 1 ! -name database -exec rm -rf {} + && \
+    find simulation_core/3rdparty/infrastructure -mindepth 1 -maxdepth 1 ! -name requirements.txt -exec rm -rf {} +
+
+COPY .simulation_core /app/.simulation_core
+
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+ENV PYTHONPATH="${APP_LIB_PATH}:${PYTHONPATH}" \
+    LD_LIBRARY_PATH="${APP_LIB_PATH}:${LD_LIBRARY_PATH}" \
+    SIMULATION_LOCAL_ROOT=/app/simulation_core/assets/database
+
+RUN echo "${APP_LIB_PATH}" > /etc/ld.so.conf.d/99-app-libs.conf && ldconfig
+
+EXPOSE 7860
+
+CMD ["sh", "-c", "exec streamlit run app.py --server.port=7860 --server.address=0.0.0.0 --server.enableCORS=false --server.enableXsrfProtection=false --client.toolbarMode=minimal"]

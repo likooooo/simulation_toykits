@@ -19,7 +19,7 @@
 2. **Python 依赖（requirements.txt）**：本 Agent 调用的工具依赖仓库中的 **core** 模块（材料库、膜系计算、R/T 等）。**若要调用 core 里的工具，必须先按仓库根目录的 `requirements.txt` 初始化运行环境**，例如：`pip install -r requirements.txt`。否则 Runner 在执行 TOOL_CALL 时会因缺少依赖或 core 加载失败而报错。
 3. **Cursor API Key**：在 [Cursor Dashboard → Integrations](https://cursor.com/dashboard?tab=integrations) 创建；设置环境变量 `CURSOR_API_KEY`。
 4. **GitHub 仓库**：Cloud Agents **只能使用「已在 Cursor 中关联」的仓库**（不是任意公开仓库即可）。请用 Cursor 打开该仓库、或在 [cursor.com](https://cursor.com) 设置中连接 GitHub 并授权该仓库；否则会报 `Failed to verify existence of branch 'main'`。创建 Agent 时传 `--repository`（该仓库的 clone URL）。可先运行 `--list-repos` 查看当前可用的仓库列表。
-5. **simulation.so、材料库**：与本地 [fresnel_caculator](../fresnel_caculator) 相同，需在运行 Runner 的机器上准备好（如 `docker_artifacts/simulation.so`、`assets/refractiveindex.info-database`）。
+5. **simulation.so、材料库**：与本地 [fresnel_caculator](../fresnel_caculator) 相同，需在运行 Runner 的机器上准备好（`.simulation_core/simulation.so` 与 `simulation_core/assets/database`）。
 
 ## 使用方式
 

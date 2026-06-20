@@ -13,8 +13,8 @@
 1. **Python**：与仓库主项目一致（建议 3.10+）。
 2. **Ollama**：本地已安装并运行，且已拉取支持工具调用/指令遵循的模型（推荐 `qwen2.5:7b` 或 `llama3.2`）。
   **从无到有部署**：可用本目录下的 Docker 一键起 Ollama，见 [docker/README.md](docker/README.md)。
-3. **simulation.so**：与网页端相同，需先通过 `scripts/prepare_docker.sh` 等准备好 `docker_artifacts/simulation.so`，或将 `ARTIFACTS_DIR` 指向包含 `simulation.so` 的目录。
-4. **材料数据库**：与网页端相同，使用 `assets/refractiveindex.info-database`（若不存在，refractiveindex 模块会尝试自动下载）。
+3. **simulation.so**：与网页端相同，需确保 `.simulation_core/` 下存在 `simulation.so`（可执行 `python scripts/build_and_deploy.py simulation_core/build` 编译并 collect）。
+4. **材料数据库**：与网页端相同，由 `simulation_database` 使用 `simulation_core/assets/database`（首次运行可自动 download/install）。
 
 ## 使用方式
 

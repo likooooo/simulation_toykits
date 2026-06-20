@@ -1,4 +1,4 @@
-from common import get_nk_at_wavelength, ensure_fresnel_session_state
+from common import get_nk_at_wavelength, ensure_fresnel_session_state, pyplot_fixed_width, save_result_mat_button, build_spectral_curve_result_mat
 import matplotlib.pyplot as plt
 import streamlit as st
 import numpy as np
@@ -26,7 +26,7 @@ with st.spinner("计算角度-反射/透射曲线…"):
         input_layers, wl0, np.linspace(0, 89, 90)
     )
 for fig in angle_figs:
-    st.pyplot(fig)
+    pyplot_fixed_width(fig)
     plt.close(fig)
 
 col_wl_min, col_wl_max = st.columns(2)
@@ -81,7 +81,7 @@ else:
 
         try:
             with st.spinner("计算波长-反射/透射曲线…"):
-                fig_rt, fig_nk = compute_wavelength_vs_RT_figures(
+                fig_rt, fig_nk, spectral_data = compute_wavelength_vs_RT_figures(
                     input_layers,
                     layer_names,
                     nk_map,
@@ -90,9 +90,13 @@ else:
                 )
             st.session_state["spectral_fig_rt"] = fig_rt
             st.session_state["spectral_fig_nk"] = fig_nk
+            st.session_state["spectral_result_data"] = spectral_data
         except Exception as e:
             st.error(f"计算失败: {e}")
 
 if "spectral_fig_rt" in st.session_state and "spectral_fig_nk" in st.session_state:
-    st.pyplot(st.session_state["spectral_fig_rt"])
-    st.pyplot(st.session_state["spectral_fig_nk"])
+    pyplot_fixed_width(st.session_state["spectral_fig_rt"])
+    pyplot_fixed_width(st.session_state["spectral_fig_nk"])
+    if "spectral_result_data" in st.session_state:
+        mat_bytes = build_spectral_curve_result_mat(st.session_state["spectral_result_data"])
+        save_result_mat_button(mat_bytes, "spectral_curve_result.mat", "spectral_save_mat")

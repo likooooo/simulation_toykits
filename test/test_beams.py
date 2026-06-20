@@ -1,7 +1,6 @@
 """Tests for core.beams (compute) and core.beams_plot (show_complex_plot)."""
 
 import numpy as np
-import pytest
 
 from core.beams_plot import show_complex_plot
 
@@ -30,18 +29,8 @@ class TestShowComplexPlot:
         assert any(ax.get_xlabel() == "x (px)" for ax in axes)
 
 
-def _simulation_available():
-    try:
-        from core import simulation_loader
-        simulation_loader.get_simulation_module()
-        return True
-    except Exception:
-        return False
-
-
-@pytest.mark.skipif(not _simulation_available(), reason="simulation.so not available (e.g. CI)")
 class TestBeamsCompute:
-    """Smoke tests for beam compute functions when simulation.so is present."""
+    """Smoke tests for beam compute functions; 依赖 simulation.so，加载失败则用例直接失败并报真实错误。"""
 
     @staticmethod
     def _common_shape_meta(field, meta):

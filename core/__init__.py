@@ -1,7 +1,7 @@
 """计算逻辑层；fresnel/films/spectral 按需懒加载（依赖 simulation.so）。"""
 
 from core.materials import get_nk_at_wavelength, with_nk_columns
-from core.formula import parse_formula, parse_formula_v1
+from core.formula import parse_formula_v1
 from core.filmstack_viz import (
     MockMaterial,
     MockFilm,
@@ -9,9 +9,7 @@ from core.filmstack_viz import (
     plot_periodic_structure,
     nk_to_color,
     build_layers_for_visualization,
-    plot_tmm_filmstack,
 )
-from core.material_index import load_material_index_cached
 
 _LAZY_MODULES = {
     "build_tmm_layers": "core.fresnel",
@@ -31,6 +29,12 @@ _LAZY_MODULES = {
     "compute_hermite_gaussian": "core.beams",
     "compute_laguerre_gaussian": "core.beams",
     "show_complex_plot": "core.beams_plot",
+    "load_mat_v7": "core.sturm_liouville",
+    "sl_formula_markdown": "core.sturm_liouville",
+    "run_sturm_liouville": "core.sturm_liouville",
+    "run_time_dependent_sturm_liouville": "core.sturm_liouville",
+    "build_result_mat": "core.sturm_liouville",
+    "plot_result_and_error": "core.sturm_liouville",
 }
 
 
@@ -44,7 +48,6 @@ def __getattr__(name):
 __all__ = [
     "get_nk_at_wavelength",
     "with_nk_columns",
-    "parse_formula",
     "parse_formula_v1",
     "MockMaterial",
     "MockFilm",
@@ -52,8 +55,6 @@ __all__ = [
     "plot_periodic_structure",
     "nk_to_color",
     "build_layers_for_visualization",
-    "plot_tmm_filmstack",
-    "load_material_index_cached",
     "build_tmm_layers",
     "compute_RT",
     "get_r_t",
@@ -71,4 +72,10 @@ __all__ = [
     "compute_hermite_gaussian",
     "compute_laguerre_gaussian",
     "show_complex_plot",
+    "load_mat_v7",
+    "sl_formula_markdown",
+    "run_sturm_liouville",
+    "run_time_dependent_sturm_liouville",
+    "build_result_mat",
+    "plot_result_and_error",
 ]

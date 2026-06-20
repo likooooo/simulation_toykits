@@ -34,13 +34,14 @@ class TestListMaterialIndex:
         assert "error" in out
         assert "不能为空" in out["error"]
 
-    def test_call_with_csv_path(self):
+    def test_call_with_csv_path_ignored(self):
+        """csv_path is legacy; search uses simulation_database regardless."""
         out = run_tool("list_material_index", {
             "material_name": "SiO2",
             "csv_path": "/nonexistent/index.csv",
         })
         assert isinstance(out, dict)
-        assert "error" in out
+        assert "shelf_id" in out and "books" in out
 
 
 class TestGetMaterialNk:

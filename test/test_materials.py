@@ -6,36 +6,28 @@ import pytest
 from core.materials import get_nk_at_wavelength, with_nk_columns
 
 
-def _load_nk_fake(shelf, book, page):
-    """模拟 load_nk: 返回 (wls, ns, ks)。"""
-    wls = np.array([0.4, 0.6, 1.0])
-    ns = np.array([1.45, 1.46, 1.44])
-    ks = np.array([0.0, 0.0, 0.0])
-    return wls, ns, ks
+class _FakeMat:
+    def __init__(self, n=1.46, k=0.0):
+        self._n = n
+        self._k = k
+
+    def nk_at_wavelength_um(self, wl_um):
+        return complex(self._n, self._k)
 
 
 class TestGetNkAtWavelength:
     def test_vacuum(self):
-        nk = get_nk_at_wavelength({}, "Vacuum", 0.532, _load_nk_fake)
+        nk = get_nk_at_wavelength({}, "Vacuum", 0.532)
         assert nk == 1.0 + 0.0j
 
     def test_unknown_material(self):
-        nk = get_nk_at_wavelength({}, "Unknown", 0.532, _load_nk_fake)
+        nk = get_nk_at_wavelength({}, "Unknown", 0.532)
         assert nk == 1.0 + 0.0j
 
-    def test_interpolation(self):
-        materials_db = {
-            "SiO2": {
-                "Shelf ID": "s",
-                "Book ID": "b",
-                "Page ID": "p",
-            }
-        }
-        nk = get_nk_at_wavelength(
-            materials_db, "SiO2", 0.5, _load_nk_fake
-        )
-        assert abs(np.real(nk) - 1.455) < 0.01
-        assert np.imag(nk) == 0.0
+    def test_from_database_material(self):
+        materials_db = {"SiO2": _FakeMat(1.46, 0.0)}
+        nk = get_nk_at_wavelength(materials_db, "SiO2", 0.5)
+        assert nk == 1.46 + 0.0j
 
 
 class TestWithNkColumns:

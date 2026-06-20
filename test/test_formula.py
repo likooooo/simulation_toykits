@@ -1,22 +1,7 @@
 """core.formula 测试用例"""
 
 import pytest
-from core.formula import parse_formula, parse_formula_v1
-
-
-class TestParseFormula:
-    def test_simple_pairs(self):
-        got = parse_formula("SiO2 0.1 TiO2 0.2")
-        assert len(got) == 2
-        assert got[0] == {"Material": "SiO2", "Thickness (um)": 0.1}
-        assert got[1] == {"Material": "TiO2", "Thickness (um)": 0.2}
-
-    def test_periodic(self):
-        got = parse_formula("(H 0.1 L 0.2)^2")
-        assert len(got) == 4
-        assert got[0]["Material"] == "H"
-        assert got[0]["Thickness (um)"] == 0.1
-        assert got[2]["Material"] == "H"
+from core.formula import parse_formula_v1
 
 
 class TestParseFormulaV1:
