@@ -1,8 +1,11 @@
 """Tests for core.beams (compute) and core.beams_plot (show_complex_plot)."""
 
 import numpy as np
+import pytest
 
 from core.beams_plot import show_complex_plot
+
+_GRID = ([-1.0, -1.0], [1.0, 1.0], [4, 4])
 
 
 class TestShowComplexPlot:
@@ -29,60 +32,35 @@ class TestShowComplexPlot:
         assert any(ax.get_xlabel() == "x (px)" for ax in axes)
 
 
+def _assert_beam_shape(field, meta) -> None:
+    assert field.shape == (4, 4)
+    assert meta["nx"] == 4 and meta["ny"] == 4
+    assert "dx" in meta and "dy" in meta and "wavelength" in meta
+
+
 class TestBeamsCompute:
     """Smoke tests for beam compute functions; 依赖 simulation.so，加载失败则用例直接失败并报真实错误。"""
 
-    @staticmethod
-    def _common_shape_meta(field, meta):
-        assert field.shape == (4, 4)
-        assert meta["nx"] == 4 and meta["ny"] == 4
-        assert "dx" in meta and "dy" in meta and "wavelength" in meta
+    @pytest.mark.parametrize(
+        "import_path,args",
+        [
+            ("compute_plane_wave", (0.5, 0.0, 0.0)),
+            ("compute_quadratic_wave", (0.5, 1.0)),
+            ("compute_spherical_wave", (0.5, 1.0)),
+            (
+                "compute_flat_top_rectangular",
+                (1.0, 1.0, 0.5, 2.0, 2.0),
+            ),
+            ("compute_flat_top_circular", (1.0, 0.5, 2.0)),
+            ("compute_hermite_gaussian", (0, 0, 0.5, 0.0, 1.0, 1.0)),
+            ("compute_laguerre_gaussian", (0, 0, 0.5, 0.0, 1.0)),
+        ],
+    )
+    def test_beam_compute_smoke(self, import_path, args):
+        import importlib
 
-    def test_compute_plane_wave(self):
-        from core.beams import compute_plane_wave
-        field, meta = compute_plane_wave(
-            0.5, 0.0, 0.0, [-1.0, -1.0], [1.0, 1.0], [4, 4]
-        )
-        self._common_shape_meta(field, meta)
-
-    def test_compute_quadratic_wave(self):
-        from core.beams import compute_quadratic_wave
-        field, meta = compute_quadratic_wave(
-            0.5, 1.0, [-1.0, -1.0], [1.0, 1.0], [4, 4]
-        )
-        self._common_shape_meta(field, meta)
-
-    def test_compute_spherical_wave(self):
-        from core.beams import compute_spherical_wave
-        field, meta = compute_spherical_wave(
-            0.5, 1.0, [-1.0, -1.0], [1.0, 1.0], [4, 4]
-        )
-        self._common_shape_meta(field, meta)
-
-    def test_compute_flat_top_rectangular(self):
-        from core.beams import compute_flat_top_rectangular
-        field, meta = compute_flat_top_rectangular(
-            1.0, 1.0, 0.5, 2.0, 2.0, [-1.0, -1.0], [1.0, 1.0], [4, 4]
-        )
-        self._common_shape_meta(field, meta)
-
-    def test_compute_flat_top_circular(self):
-        from core.beams import compute_flat_top_circular
-        field, meta = compute_flat_top_circular(
-            1.0, 0.5, 2.0, [-1.0, -1.0], [1.0, 1.0], [4, 4]
-        )
-        self._common_shape_meta(field, meta)
-
-    def test_compute_hermite_gaussian(self):
-        from core.beams import compute_hermite_gaussian
-        field, meta = compute_hermite_gaussian(
-            0, 0, 0.5, 0.0, 1.0, 1.0, [-1.0, -1.0], [1.0, 1.0], [4, 4]
-        )
-        self._common_shape_meta(field, meta)
-
-    def test_compute_laguerre_gaussian(self):
-        from core.beams import compute_laguerre_gaussian
-        field, meta = compute_laguerre_gaussian(
-            0, 0, 0.5, 0.0, 1.0, [-1.0, -1.0], [1.0, 1.0], [4, 4]
-        )
-        self._common_shape_meta(field, meta)
+        mod = importlib.import_module("core.beams")
+        compute_fn = getattr(mod, import_path)
+        start_xy, end_xy, shape_xy = _GRID
+        field, meta = compute_fn(*args, start_xy, end_xy, shape_xy)
+        _assert_beam_shape(field, meta)

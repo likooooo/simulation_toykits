@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="panel.css" />
+</head>
+<body>
+  <div id="panel" class="panel">
+    <div id="panel-browser" class="panel-section panel-browser">
+      <div class="panel-section-header browser-header">
+        <div class="panel-header-left">
+          <span class="panel-section-title">资源浏览器</span>
+          <span id="browser-help" class="help-icon hidden">?</span>
+        </div>
+        <div class="panel-header-right">
+          <label class="toggle-wrap">
+            <input type="checkbox" id="download-toggle" />
+            <span class="toggle-slider"></span>
+            <span class="toggle-label">双击加入工作区时下载 CSV</span>
+          </label>
+        </div>
+      </div>
+      <div class="search-wrap">
+        <input type="search" id="search-input" class="search-input" placeholder="搜索名称…" autocomplete="off" />
+      </div>
+      <div id="tree-area" class="tree-area" tabindex="0"></div>
+      <div id="search-area" class="search-area hidden"></div>
+    </div>
+    <div id="panel-workspace" class="panel-section panel-workspace">
+      <div class="panel-section-header workspace-header">
+        <div class="panel-header-left">
+          <span class="panel-section-title">工作区</span>
+          <span id="workspace-help" class="help-icon hidden">?</span>
+        </div>
+        <div class="panel-header-right">
+          <button type="button" id="clear-materials" class="btn-secondary btn-header">清空工作区</button>
+        </div>
+      </div>
+      <div id="workspace-area" class="workspace-area"></div>
+    </div>
+    <div id="context-menu" class="context-menu hidden"></div>
+    <div id="help-tooltip" class="help-tooltip hidden" role="tooltip"></div>
+  </div>
+  <script src="./streamlit-component-lib.js"></script>
+  <script src="./main.js"></script>
+</body>
+</html>

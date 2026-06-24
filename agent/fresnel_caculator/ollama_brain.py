@@ -15,7 +15,6 @@ TOOL_SCHEMAS = [
         "description": "按材料名在索引中查询，返回 shelf_id、一组 page_id。",
         "arguments": {
             "material_name": "材料名称，必填，如 SiO2、TiO2，区分大小写查询",
-            "csv_path": "可选，材料索引 CSV 路径，不传则用默认路径",
         },
     },
     {
@@ -68,7 +67,6 @@ TOOL_SCHEMAS = [
             "materials_db": "可选，材料名到 {Shelf ID, Book ID, Page ID} 的映射",
             "out_figure_path": "可选，曲线图保存路径（与 out_figure_rt_path 二选一）",
             "out_figure_rt_path": "可选，曲线图保存路径（同上）",
-            "out_figure_nk_path": "可选，同上，本工具只产出一张图",
         },
     },
     {
@@ -92,7 +90,7 @@ TOOL_SCHEMAS = [
     },
 ]
 
-SYSTEM_PROMPT = """你由Simulation-toykits部署, 一个专门用于设计、分析多层光学薄膜的专家系统。你可以使用以下工具完成用户请求。
+SYSTEM_PROMPT = """你是由 Simulation-toykits 部署的多层光学薄膜专家系统。你可以使用以下工具完成用户请求。
 
 可用工具（每次只能调用一个）：
 - list_material_index: 列出材料索引，查 shelf/book/page

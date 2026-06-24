@@ -37,9 +37,11 @@ COPY .simulation_core /app/.simulation_core
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-ENV PYTHONPATH="${APP_LIB_PATH}:${PYTHONPATH}" \
+ENV PYTHONPATH="/app:${APP_LIB_PATH}:${PYTHONPATH}" \
     LD_LIBRARY_PATH="${APP_LIB_PATH}:${LD_LIBRARY_PATH}" \
-    SIMULATION_LOCAL_ROOT=/app/simulation_core/assets/database
+    SIMULATION_ARTIFACTS_DIR="${APP_LIB_PATH}" \
+    SIMULATION_DATABASE_DIR=/app/simulation_core/assets/database \
+    SIMULATION_TMM_ASSETS_DIR=/app/simulation_core/assets/ipynb/simulation/TMM
 
 RUN echo "${APP_LIB_PATH}" > /etc/ld.so.conf.d/99-app-libs.conf && ldconfig
 

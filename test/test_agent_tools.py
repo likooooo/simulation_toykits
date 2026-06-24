@@ -1,20 +1,14 @@
 """Fresnel agent 工具层测试：保证每个 agent 可调用的 tool 均可被正常调用。"""
 
 import os
-import sys
 import tempfile
 import pytest
-
-# 从仓库根目录加载（与 run_agent 一致）
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
 
 from agent.fresnel_caculator.tools import run_tool, TOOLS
 
 
 # 不依赖材料库的膜系公式（内联 n,k，仅需 Vacuum + 一层介质）
-_FORMULA_INLINE_NK = "Vacuum 0 Layer 0.1 1.5 0 Vacuum 0"
+_FORMULA_INLINE_NK = "Vacuum 0 1.0 0 Layer 0.1 1.5 0 Vacuum 0 1.0 0"
 
 
 class TestListMaterialIndex:
@@ -34,15 +28,6 @@ class TestListMaterialIndex:
         assert "error" in out
         assert "不能为空" in out["error"]
 
-    def test_call_with_csv_path_ignored(self):
-        """csv_path is legacy; search uses simulation_database regardless."""
-        out = run_tool("list_material_index", {
-            "material_name": "SiO2",
-            "csv_path": "/nonexistent/index.csv",
-        })
-        assert isinstance(out, dict)
-        assert "shelf_id" in out and "books" in out
-
 
 class TestGetMaterialNk:
     """get_material_nk：获取材料 n/k。Vacuum 不依赖库。"""
@@ -53,7 +38,6 @@ class TestGetMaterialNk:
             "book_id": "Vacuum",
             "page_id": "any",
         })
-        print(out)
         assert isinstance(out, dict)
         assert out.get("material") == "Vacuum"
         assert "wavelength_um" in out and "n" in out and "k" in out
@@ -64,7 +48,6 @@ class TestGetMaterialNk:
             "book_id": "SiO2",
             "page_id": "Malitson",
         })
-        print(out)
         assert isinstance(out, dict)
         assert "material" in out or "error" in out
 
@@ -105,7 +88,6 @@ class TestExportNkToCsv:
                 "page_id": "any",
                 "out_path": path,
             })
-            print(out)
             assert isinstance(out, dict)
             assert out.get("success") is True or "error" in out
             if out.get("success"):
@@ -115,39 +97,8 @@ class TestExportNkToCsv:
                 os.unlink(path)
 
 
-class TestParseFilmFormula:
-    """parse_film_formula：解析膜系公式。"""
-
-    def test_call_simple(self):
-        out = run_tool("parse_film_formula", {
-            "formula": "Vacuum 0 SiO2 0.1 Vacuum 0",
-        })
-        print(out)
-        assert isinstance(out, dict)
-        assert "layers" in out
-        assert len(out["layers"]) >= 2
-
-    def test_call_with_periodic(self):
-        out = run_tool("parse_film_formula", {
-            "formula": "(SiO2 0.1 Ta2O5 0.02)^2",
-        })
-        print(out)
-        assert isinstance(out, dict)
-        assert "layers" in out or "error" in out
-
-
 class TestComputeFilmstack:
     """compute_filmstack：单组膜系 R/T。用内联 n,k 公式不依赖材料库。"""
-
-    def test_call_inline_nk(self):
-        out = run_tool("compute_filmstack", {
-            "formula": _FORMULA_INLINE_NK,
-            "angle_deg": 0.0,
-            "wl_um": 0.532,
-        })
-        print(out)
-        assert isinstance(out, dict)
-        assert "error" in out or ("R_s" in out and "T_s" in out)
 
     def test_call_with_figure_path(self):
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
@@ -159,7 +110,6 @@ class TestComputeFilmstack:
                 "wl_um": 0.532,
                 "out_figure_path": path,
             })
-            print(out)
             assert isinstance(out, dict)
             if "error" not in out and out.get("figure_path"):
                 assert os.path.isfile(out["figure_path"])
@@ -177,51 +127,10 @@ class TestComputeFilmstackBatch:
             "angle_deg": 0.0,
             "wl_um": 0.532,
         })
-        print(out)
         assert isinstance(out, dict)
         assert "results" in out or "error" in out  # error when simulation skipped in CI
         if "results" in out:
             assert len(out["results"]) == 2
-
-
-class TestComputeAngleVsRt:
-    """compute_angle_vs_rt：固定波长，R/T 随角度变化。"""
-
-    def test_call(self):
-        out = run_tool("compute_angle_vs_rt", {
-            "formula": _FORMULA_INLINE_NK,
-            "wl_um": 0.532,
-        })
-        print(out)
-        assert isinstance(out, dict)
-        assert "error" in out or "angles_deg" in out
-
-
-class TestComputeWavelengthVsRt:
-    """compute_wavelength_vs_rt：固定角度，R/T 随波长变化。"""
-
-    def test_call(self):
-        out = run_tool("compute_wavelength_vs_rt", {
-            "formula": _FORMULA_INLINE_NK,
-            "angle_deg": 0.0,
-            "wl_min_um": 0.4,
-            "wl_max_um": 0.7,
-        })
-        print(out)
-        assert isinstance(out, dict)
-        assert "error" in out or "wl_range" in out
-
-    def test_call_with_num_points(self):
-        out = run_tool("compute_wavelength_vs_rt", {
-            "formula": _FORMULA_INLINE_NK,
-            "angle_deg": 0.0,
-            "wl_min_um": 0.4,
-            "wl_max_um": 0.7,
-            "num_points": 20,
-        })
-        print(out)
-        assert isinstance(out, dict)
-        assert "error" in out or "num_points" in out
 
 
 class TestSaveResultsCsv:
@@ -238,7 +147,6 @@ class TestSaveResultsCsv:
                 ],
                 "out_path": path,
             })
-            print(out)
             assert isinstance(out, dict)
             assert out.get("success") is True
             assert out.get("rows") == 2
@@ -253,7 +161,6 @@ class TestRunToolUnknown:
 
     def test_unknown_tool(self):
         out = run_tool("no_such_tool", {})
-        print(out)
         assert isinstance(out, dict)
         assert "error" in out
         assert "available" in out

@@ -19,13 +19,8 @@ import sys
 # 在非 Streamlit 环境下，core.refractiveindex 导入时会触发 st.cache_data 的 "No runtime found" 警告，此处屏蔽
 logging.getLogger("streamlit.runtime.caching.cache_data_api").setLevel(logging.ERROR)
 
-_AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
-_REPO_ROOT = os.path.dirname(os.path.dirname(_AGENT_DIR))
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
-
-from agent.fresnel_caculator.ollama_brain import SYSTEM_PROMPT, chat_turn
-from agent.fresnel_caculator.tools import run_tool, TOOLS
+from agent.fresnel_caculator.tools import run_tool  # noqa: E402
+from agent.fresnel_caculator.ollama_brain import SYSTEM_PROMPT, chat_turn  # noqa: E402
 
 
 def main():

@@ -3,177 +3,167 @@
 ### 获取代码
 
 ```bash
-# 克隆主仓库
 git clone https://github.com/likooooo/simulation_toykits.git
 cd simulation_toykits
-# 初始化子模块（simulation_core）
 git submodule update --init --recursive simulation_core
 ```
 
-### 本地运行
+### 开发者环境配置
+
+链路：**系统包 → Python venv → 编译 → 测试**。
+
+#### 1. 系统依赖
+
+与 [simulation_core CI](simulation_core/.github/workflows/build-ci.yml) 一致：
 
 ```bash
-# 建议使用虚拟环境
+sudo apt install -y \
+  build-essential \
+  clang-20 \
+  llvm-20-dev \
+  pkg-config \
+  python3-venv \
+  python3-dev \
+  libboost-all-dev \
+  libeigen3-dev \
+  libfftw3-dev \
+  libopenmpi-dev
+```
+
+#### 2. Python 环境
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install --no-cache-dir -r requirements.txt
-
-# 编译 simulation_core 并 collect 运行时产物到 .simulation_core/（gitignore，首次或更新 core 后需执行）
-cd simulation_core
-source 3rdparty/infrastructure/scripts/init-build-env.sh
-python3 scripts/build_simulation.py -B build --build-type Release --collect ../.simulation_core
-cp build/test_diffraction ../.simulation_core/
-cd ..
-
-# 启动 Streamlit
-export LD_LIBRARY_PATH=$PWD/.simulation_core
-streamlit run app.py --server.port=8052 --server.address=0.0.0.0
-# 浏览器访问 http://localhost:8052/
 ```
+
+仅开发 simulation_core 子模块时见 [simulation_core/README.md](simulation_core/README.md)。
+
+#### 3. 环境变量
+
+`scripts/init-toykits-build-env.sh` 设置 `SIMULATION_*`、`PYTHONPATH`、`LD_LIBRARY_PATH`（内部 source `simulation_core/scripts/init-simulation-build-env.sh`）。
+
+```bash
+source scripts/init-toykits-build-env.sh
+```
+
+#### 4. 编译与启动
+
+```bash
+python scripts/deploy.py          # 等同 deploy.py local：编译 + collect + Streamlit（8052）
+# 仅 collect、不启动 Streamlit：
+python simulation_core/scripts/build_simulation.py --collect .simulation_core
+```
+
+#### 5. 测试
+
+须先 collect（见 §4）：
+
+```bash
+source scripts/init-toykits-build-env.sh
+python -m pytest test/ -v
+```
+
+C++ 全量测试见 [simulation_core/README.md](simulation_core/README.md)。
+
+### 本地运行
+
+完成 §1–2 后：
+
+```bash
+source .venv/bin/activate
+python scripts/deploy.py
+```
+
+编译、collect、环境变量细节见上文 §3–4 及 [scripts/simulation_toykits_deploy.md](scripts/simulation_toykits_deploy.md)。
 
 ### Docker 部署
 
 ```bash
-python scripts/build_and_deploy.py
-
-# 启动容器（前台运行，终端会输出日志）
+python scripts/deploy.py docker
 docker run -p 8052:8052 simulation-toykits:v1
 ```
 
 ### Hugging Face Space（CI 自动部署）
 
-CI 在测试通过后会调用 `scripts/refresh_hugging_face.py`，向 [simulation-toykits/v1](https://huggingface.co/spaces/simulation-toykits/v1) 推送 `Dockerfile`、CI 编译的 `.simulation_core/` 及自动生成的 `README.md`（含 BUILD_TIME、三仓库 commit / author / email）。`git commit` 消息与 `README.md` 内容一致。应用源码在 HF 构建镜像时从 GitHub 克隆。
+CI 测试通过后执行 `scripts/deploy.py hf`，向 [simulation-toykits/v1](https://huggingface.co/spaces/simulation-toykits/v1) 推送 `Dockerfile`、`.simulation_core/` 及自动生成的 `README.md`（BUILD_TIME、三仓库 commit / author / email）。HF 构建时从 GitHub 克隆应用源码。
 
-本地预览（需已有 `.simulation_core/`）：
-
-```bash
-python scripts/refresh_hugging_face.py --dry-run
-# 查看 /tmp/simulation-toykits-hf-deploy
-```
-
-**一次性 HF 密钥配置**（须与 GitHub Actions `secrets.MY_PRIVATE_KEY_1` 配对）：
+**一次性 HF 密钥**（配对 GitHub Actions `secrets.MY_PRIVATE_KEY_1`）：
 
 | 用途 | 配置 |
 |------|------|
-| CI `git push` 到 `hf.co` | HF Account → Settings → **SSH Keys** → 添加对应**公钥** |
-| HF Docker 构建时 clone GitHub 子模块 | Space → Settings → **Repository secrets** → `SSH_PRIVATE_KEY` = 同一**私钥** |
+| CI `git push` 到 `hf.co` | HF Account → Settings → **SSH Keys** → 对应**公钥** |
+| HF Docker 构建 clone 子模块 | Space → Settings → **Repository secrets** → `SSH_PRIVATE_KEY` = 同一**私钥** |
 
-详见 [`Dockerfile.hugging_face`](Dockerfile.hugging_face) 与 [`scripts/refresh_hugging_face.py`](scripts/refresh_hugging_face.py) 文件头注释。
+详见 [Dockerfile.hugging_face](Dockerfile.hugging_face) 与 [scripts/deploy.py](scripts/deploy.py) 文件头注释。
 
 ---
 
-## 脚本使用说明
+## 脚本与运行时
 
-应用依赖 `simulation.so`（及部分 .so 依赖），统一放在 **`.simulation_core/`** 目录下（gitignore，由编译 collect 生成），由 `core/simulation_loader.py` 按需加载。`simulation` 库以 **simulation_core** 子模块形式 vendored 进本仓库；`build_and_deploy.py` 默认调用 `simulation_core/scripts/build_simulation.py` 编译并 collect 到 `.simulation_core/`，再构建镜像。
+架构与部署 SOP：[scripts/simulation_toykits_deploy.md](scripts/simulation_toykits_deploy.md)。
 
-材料数据库默认位于 **simulation_core/assets/database**（由 `simulation_database` 自动解析）。
+运行时产物位于 `.simulation_core/`（gitignore）：`simulation.so`、依赖 `.so`、`py_core_plugins/` 等。测试与 Streamlit 前须 `source scripts/init-toykits-build-env.sh`；首次 `import simulation` 加载插件。
 
-**衍射角计算器（Fresnel → Diffraction Angle）** 还会调用与 `simulation.so` 同目录下的可执行文件 **`test_diffraction`**（由 `simulation_core/tests/test_diffraction.cpp` 构建）。`build_and_deploy.py` 会在 collect 时自动复制；也可手动复制：
+`SIMULATION_DATABASE_DIR` 指向材料库根目录（默认 `simulation_core/assets/database`）。功能概览见 [docs/welcome.md](docs/welcome.md)。
 
-```bash
-cp simulation_core/build/test_diffraction .simulation_core/
-```
+Diffraction angle 页另需同目录下的 `test_diffraction` 可执行文件；`deploy.py` collect 时自动复制。
 
-### build_and_deploy.py — 构建与部署 Docker 镜像
+### deploy.py
 
-构建 Docker 镜像（本地或从 GitHub 拉代码），并可选择将镜像导出为 tar 到 **dist/** 或 SCP 到远程主机。默认在 `simulation_core/build` 以 **minimal** 模式（不链接 MKL/CUDA）执行 `cmake .. -DCMAKE_BUILD_TYPE=Release` 并编译，再调用 `simulation_core/scripts/collect_simulation.py` 将 `simulation.so`、白名单 .so 及 `py_core_plugins` 收集到 `.simulation_core/`。
+| 子命令 | 作用 |
+|--------|------|
+| `local`（默认） | 编译 + collect + 启动 Streamlit（8052） |
+| `docker` | 编译 + collect + 材料库打包 + `docker build` |
+| `hf` | 推送 `.simulation_core/` 到 Hugging Face Space |
 
-```bash
-# 仅构建镜像（不导出 tar；需 .simulation_core/ 已有 simulation.so）
-python scripts/build_and_deploy.py
-
-# 先编译 simulation_core 并准备 .simulation_core/（默认 minimal 构建）
-python scripts/build_and_deploy.py simulation_core/build
-
-# 启用 MKL CPU 后端（需已安装 oneMKL）
-python scripts/build_and_deploy.py simulation_core/build --cpu-only
-
-# 启用 MKL + CUDA 双后端
-python scripts/build_and_deploy.py simulation_core/build --full-build
-
-# 构建并把镜像导出为 tar 到 dist/
-python scripts/build_and_deploy.py --export-tar
-
-# 构建并传到远程服务器（会先导出 tar 再 scp）
-python scripts/build_and_deploy.py simulation_core/build --remote user@myserver
-
-# 指定镜像标签与远程存放目录
-python scripts/build_and_deploy.py simulation_core/build --remote user@myserver --image-tag myapp:v2 --remote-path /home/user/images
-
-# 使用 GitHub 上的 Dockerfile 构建（在镜像内克隆仓库与子模块）
-python scripts/build_and_deploy.py simulation_core/build --remote user@myserver --source github
-```
-
-常用参数：
-
-
-| 参数                      | 说明                                                            |
-| ----------------------- | ------------------------------------------------------------- |
-| `path_to_build`         | 可选。simulation_core 的 build 目录（默认 `simulation_core/build`）；若提供则先编译并 collect 到 `.simulation_core/`。 |
-| `--cpu-only`            | MKL CPU 构建（`SIMULATION_LINK_MKL=ON`，不链接 CUDA）。 |
-| `--full-build`          | MKL + CUDA 双后端（缺依赖时 configure 失败）。 |
-| `--export-tar`          | 将镜像导出为 tar 到 `dist/`。                                         |
-| `--remote USER@HOST`    | 导出后通过 SCP 传到该主机。                                              |
-| `--image-tag`           | 镜像标签，默认 `simulation-toykits:v1`。                              |
-| `--remote-path`         | 远程主机上存放 tar 的目录，默认 `~`。                                       |
-| `--source local|github` | 使用 `Dockerfile.local`（本地代码）或 `Dockerfile`（从 GitHub 克隆）。       |
-
-
-### collect_simulation.py（simulation_core 子模块）
-
-`simulation_core/scripts/collect_simulation.py` 会拷贝 `simulation.so`、白名单 .so（如 libuca、libmekil 等）以及 `py_core_plugins` 到指定输出目录；`build_and_deploy.py` 在编译完成后自动调用。若需单独使用：
-
-```bash
-cd simulation_core
-python scripts/collect_simulation.py -b ./build -o ../.simulation_core
-cp build/test_diffraction ../.simulation_core/
-# 可选 --tar 将输出目录打包为 .tar.gz
-```
+collect 实现见 `simulation_core/scripts/collect_simulation.py`。
 
 ---
 
 ## 项目结构
 
-
-| 目录 / 文件      | 说明                                                                                                      |
-| ------------ | ------------------------------------------------------------------------------------------------------- |
-| **core/**    | 计算与业务逻辑：公式解析、膜系可视化、材料与折射率等；无全局状态依赖，便于复用与测试。                                                             |
-| **pages/**   | Streamlit 页面与 UI，负责 session 状态与用户交互，计算统一调用 `core`。                                                      |
-| **docs/**    | 首页简介（`welcome.md`）与 Fresnel 使用说明（`fresnel_calculator_usage.md`）。 |
-| **scripts/** | `build_and_deploy.py`：构建/部署 Docker；默认编译 `simulation_core/build` 并 collect 到 `.simulation_core/`。 |
-| **test/**    | `core` 的单元测试。运行：`pip install pytest` 后执行 `LD_LIBRARY_PATH=$PWD/.simulation_core python -m pytest test/ -v`（需先 collect）。                          |
-| **simulation_core/** | 子模块：[simulation](https://github.com/likooooo/simulation) 核心库；含 `assets/database` 材料库。 |
-| **.simulation_core/** | 运行时产物（gitignore）：`simulation.so`、依赖 .so、`py_core_plugins/` 等，由 collect 生成。 |
-
+| 目录 / 文件 | 说明 |
+|-------------|------|
+| **filmstack_simulation/** | 多层膜 Streamlit 模块（可独立拷贝） |
+| **simulation_database/** | 仿真数据库 Streamlit 模块（可独立拷贝） |
+| **pages/** | Streamlit 多页入口；薄 wrapper |
+| **ui/** | 宿主主题（`theme.py` + `design_tokens.css`） |
+| **core/** | beams、衍射角、PDE 等宿主计算逻辑 |
+| **docs/** | `welcome.md`、`filmstack_formula_usage.md` |
+| **scripts/** | `deploy.py`、`_common.py`、[simulation_toykits_deploy.md](scripts/simulation_toykits_deploy.md) |
+| **test/** | 单元测试；须先 collect 并 source init 脚本 |
+| **simulation_core/** | 子模块；含 `assets/database` |
+| **.simulation_core/** | collect 产物（gitignore） |
 
 ---
 
 ## 可选配置
 
-**WSL2 局域网访问**：若希望在同一局域网内用其他设备访问：
+**WSL2 局域网访问**
 
-1. 在 `.wslconfig` 中开启镜像网络模式，使 WSL 与 Windows 共享 IP：
-  ```ini
+1. `.wslconfig` 开启镜像网络：
+   ```ini
    [wsl2]
    networkingMode=mirrored
-  ```
-2. 在 Windows 上放行 8052 端口（若被防火墙拦截）：
-  ```powershell
+   ```
+2. Windows 防火墙放行 8052：
+   ```powershell
    New-NetFirewallRule -DisplayName "Streamlit-Access" -Direction Inbound -LocalPort 8052 -Protocol TCP -Action Allow
-  ```
+   ```
 
 ---
 
 ## 许可证
 
-本项目采用 MIT 许可证。材料数据遵循 refractiveindex.info 的 CC0 1.0 协议。
+MIT 许可证。材料数据遵循 refractiveindex.info CC0 1.0。
 
 ## 路线图（规划中）
 
-- zernike 波前拟合
-- filmstack optimization
-- 绘制解空间地形图, 平坦表示鲁棒性好
+- Zernike 波前拟合
+- Filmstack 全局/多目标优化与解空间地形图（Freehand 局部厚度优化已提供）
 - p/q grid dependency PDE
-- 一些常见的微分算子的计算器
-- rayleigh length 计算器
-- green's function
+- 常见微分算子计算器
+- Rayleigh length 计算器
+- Green's function

@@ -1,16 +1,15 @@
 """Beam field computation: state-free wrappers around simulation.so solvers."""
 
+
 import numpy as np
 from typing import Tuple, List, Dict, Any
-
-from core import simulation_loader
 
 _DEG2RAD = np.pi / 180.0
 
 
 def _get_sim():
-    simulation_loader.get_simulation_module()
     import simulation
+
     return simulation
 
 

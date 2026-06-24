@@ -1,0 +1,186 @@
+:root {
+  --color-bg: #FAFAFA;
+  --color-surface: #FFFFFF;
+  --color-border: #E5E7EB;
+  --color-text: #111827;
+  --color-text-secondary: #6B7280;
+  --color-accent: #2563EB;
+  --color-r: #B91C1C;
+  --color-t: #047857;
+  --color-a: #6D28D9;
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  background: var(--color-bg);
+  color: var(--color-text);
+  user-select: none;
+}
+
+.freehand-root {
+  width: 100%;
+  padding: 0.25rem 0;
+}
+
+.charts-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  max-width: 960px;
+  width: 100%;
+}
+
+.chart-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.35rem 0.35rem 0.25rem;
+  position: relative;
+}
+
+.chart-panel.active {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+
+.chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+  padding: 0 0.15rem;
+}
+
+.chart-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.legend-btn {
+  border: none;
+  background: transparent;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.legend-btn:hover { background: #F3F4F6; }
+
+.clear-btn {
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 0 0.25rem;
+}
+
+.clear-btn:hover { color: #DC2626; }
+
+.reset-btn {
+  border: 1px solid var(--color-border);
+  background: #fff;
+  font-size: 0.65rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.chart-stage {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+}
+
+.chart-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair;
+}
+
+.chart-svg.disabled { cursor: not-allowed; opacity: 0.65; }
+
+.chart-panel.convergence {
+  grid-column: 1 / -1;
+  max-width: 960px;
+}
+
+.chart-panel.readonly {
+  border-color: var(--color-border);
+  box-shadow: none;
+}
+
+.chart-svg.readonly { cursor: default; }
+
+.curve-convergence { fill: none; stroke: #4682B4; }
+
+.grid-line { stroke: #E5E7EB; stroke-width: 1; }
+
+.axis-line { stroke: #9CA3AF; stroke-width: 1; }
+
+.tick-line { stroke: #9CA3AF; stroke-width: 1; }
+
+.axis-label {
+  font-size: 10px;
+  fill: #6B7280;
+  font-family: var(--font-ui);
+}
+
+.axis-title {
+  font-size: 10px;
+  fill: #6B7280;
+  font-family: var(--font-ui);
+  font-weight: 600;
+}
+
+.curve-current { fill: none; stroke: #374151; stroke-width: 2.5; }
+
+.curve-current.preview {
+  stroke-opacity: 0.45;
+  stroke-dasharray: 4 3;
+}
+
+.curve-target { fill: none; stroke-width: 2.5; }
+
+.curve-target.editing { stroke-width: 3.5; stroke-dasharray: none; }
+
+.curve-target.R { stroke: var(--color-r); }
+.curve-target.T { stroke: var(--color-t); }
+.curve-target.A { stroke: var(--color-a); }
+
+.zoom-rect {
+  fill: rgba(37, 99, 235, 0.12);
+  stroke: var(--color-accent);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.stroke-preview {
+  stroke: var(--color-accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  pointer-events: none;
+}
+
+.status-bar {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  min-height: 1rem;
+}
+
+.status-bar.optimizing { color: var(--color-accent); font-weight: 600; }
+
+@media (max-width: 900px) {
+  .charts-row { grid-template-columns: 1fr; max-width: 480px; }
+}

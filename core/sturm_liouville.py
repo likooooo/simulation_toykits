@@ -8,9 +8,6 @@ from typing import Any
 import numpy as np
 from scipy.io import loadmat, savemat
 
-from core import simulation_loader
-
-
 def load_mat_v7(file_path_or_bytes: str | bytes) -> dict[str, Any]:
     """Load MATLAB file (v7 only). Returns dict of all non-internal array variables (any keys).
     Used to populate cache; no requirement for u/f/ut/analytical. All arrays must share the same shape.
@@ -118,14 +115,19 @@ def _bc_to_enum(sim, bc: str) -> Any:
 
 
 def run_sturm_liouville(axes_config: list[dict], mat_data: dict[str, np.ndarray]) -> dict[str, Any]:
-    """Run SL solver. axes_config: list of {n_points, length, bc_from, bc_to, p, q}.
+    """Run steady SL solver. axes_config: list of {n_points, length, bc_from, bc_to, p, q}.
+
     mat_data: from load_mat_v7. Returns {result: ndarray, error?: ndarray}.
     - If u exists and f does not: result = L(u) (apply_L).
     - If f exists (u optional): solve L(u)=f, result = u (solve_L).
-    - 坐标轴 axes_config[i] 对应数组维度 i，数据 shape 须与 [ax['n_points'] for ax in axes_config] 一致；
-      NumPy 默认 C 序，最后一维（索引 -1）在内存中变化最快。不修改 mat_data 中的原始数组。
+
+    UI ``p,q`` match the formula preview; this function passes ``c.p = -p``, ``c.q = -q``
+    to C++. ``axes_config[i]`` maps to array dimension ``i``; NumPy C-order: last dim
+    is fastest. See ``run_time_dependent_sturm_liouville`` for TDSL coefficient sign.
     """
-    sim = simulation_loader.get_simulation_module()
+    import simulation
+
+    sim = simulation
     SlAxisCoeffs = sim.sl_axis_coeffs
     Solver = sim.sturm_liouville_solver_steady_z
 
@@ -192,13 +194,20 @@ def run_time_dependent_sturm_liouville(
     time_derivative_order: int = 2,
 ) -> dict[str, Any]:
     """Time-dependent solver (order 1/2): init once, then loop solver.solve(t) for each t.
+
     u0/ut0 在函数内持有直至时间循环结束，避免 solver 不拥有内存导致悬垂引用。
-    Returns {frames: list of ndarray (complex), t_vals: ndarray}.
-    If ut0 is None, use zeros like u0.
+
+    TDSL passes ``c.p = +p``, ``c.q = +q`` (unlike steady ``run_sturm_liouville`` which
+    negates both). Tests: heat (order=1) often needs ``p=-1``; wave (order=2) uses ``p=+1``
+    with default UI ``p=1``.
+
+    Returns {frames: list of ndarray (complex), t_vals: ndarray}. If ut0 is None, use zeros like u0.
     """
     if not isinstance(axes_config, (list, tuple)):
         axes_config = []
-    sim = simulation_loader.get_simulation_module()
+    import simulation
+
+    sim = simulation
     SlAxisCoeffs = sim.sl_axis_coeffs
     Solver = sim.time_dependent_sturm_liouville_solver_z
 
@@ -289,99 +298,6 @@ def _slice_for_nd(arr: np.ndarray, slice_kwargs: dict) -> np.ndarray:
     return arr[sl]
 
 
-def plot_result_and_error(
-    result: np.ndarray,
-    error: np.ndarray | None = None,
-    slice_kwargs: dict | None = None,
-    input_field: np.ndarray | None = None,
-    analytical: np.ndarray | None = None,
-):
-    """Plot: Input (amplitude + phase) | Output (amplitude + phase) | Error (amplitude + phase, if any).
-    Order top to bottom: input figure, output figure, error figure with two subplots (optional).
-    Error row: amplitude error | |result| - |analytical|, phase error (wrapped angle difference).
-    1D: curves; 2D: images; 3D+: middle z-slice as 2D. Returns single matplotlib Figure.
-    """
-    import matplotlib.pyplot as plt
-
-    slice_kwargs = slice_kwargs or {}
-    nd = result.ndim
-    # For 3D+ use middle slice for display
-    result_2d = _slice_for_nd(result, slice_kwargs)
-    input_2d = _slice_for_nd(input_field, slice_kwargs) if input_field is not None else None
-    analytical_2d = _slice_for_nd(analytical, slice_kwargs) if analytical is not None else None
-    error_2d = _slice_for_nd(error, slice_kwargs) if error is not None else None
-    display_ndim = result_2d.ndim
-
-    n_rows = 1
-    if input_field is not None:
-        n_rows += 1
-    if error is not None:
-        n_rows += 1
-    fig = plt.figure(figsize=(10, 4 * n_rows))
-    gs = fig.add_gridspec(n_rows, 2)
-
-    def plot_amp_phase(ax_amp, ax_phase, arr, title_prefix):
-        if np.iscomplexobj(arr):
-            amp, phase = np.abs(arr), np.angle(arr)
-        else:
-            amp, phase = arr, np.zeros_like(arr)
-        if display_ndim == 1:
-            x = np.arange(len(amp))
-            ax_amp.plot(x, amp)
-            ax_amp.set_title(f"{title_prefix} — Amplitude")
-            ax_phase.plot(x, phase)
-            ax_phase.set_title(f"{title_prefix} — Phase")
-        else:
-            im0 = ax_amp.imshow(amp.T, origin="lower", aspect="auto")
-            plt.colorbar(im0, ax=ax_amp)
-            ax_amp.set_title(f"{title_prefix} — Amplitude")
-            im1 = ax_phase.imshow(phase.T, origin="lower", aspect="auto", cmap="twilight")
-            plt.colorbar(im1, ax=ax_phase)
-            ax_phase.set_title(f"{title_prefix} — Phase")
-
-    def plot_error_amp_phase(ax_amp_err, ax_phase_err, res, ana):
-        """Plot amplitude error and phase error (two subplots). res, ana complex arrays."""
-        amp_err = np.abs(np.abs(res) - np.abs(ana))
-        phase_diff = np.angle(res) - np.angle(ana)
-        phase_err = np.abs(np.angle(np.exp(1j * phase_diff)))  # wrapped to [0, pi]
-        if display_ndim == 1:
-            x = np.arange(len(amp_err))
-            ax_amp_err.plot(x, amp_err)
-            ax_amp_err.set_title("Error — Amplitude")
-            ax_phase_err.plot(x, phase_err)
-            ax_phase_err.set_title("Error — Phase")
-        else:
-            im0 = ax_amp_err.imshow(amp_err.T, origin="lower", aspect="auto", cmap="hot")
-            plt.colorbar(im0, ax=ax_amp_err)
-            ax_amp_err.set_title("Error — Amplitude")
-            im1 = ax_phase_err.imshow(phase_err.T, origin="lower", aspect="auto", cmap="hot")
-            plt.colorbar(im1, ax=ax_phase_err)
-            ax_phase_err.set_title("Error — Phase")
-
-    row = 0
-    if input_2d is not None:
-        plot_amp_phase(fig.add_subplot(gs[row, 0]), fig.add_subplot(gs[row, 1]), input_2d, "Input")
-        row += 1
-    plot_amp_phase(fig.add_subplot(gs[row, 0]), fig.add_subplot(gs[row, 1]), result_2d, "Output")
-    row += 1
-    if error_2d is not None:
-        if analytical_2d is not None:
-            plot_error_amp_phase(
-                fig.add_subplot(gs[row, 0]), fig.add_subplot(gs[row, 1]), result_2d, analytical_2d
-            )
-        else:
-            # fallback: single combined error (legacy)
-            ax_err = fig.add_subplot(gs[row, :])
-            if error_2d.ndim == 1:
-                ax_err.plot(np.arange(len(error_2d)), error_2d)
-            else:
-                im = ax_err.imshow(error_2d.T, origin="lower", aspect="auto", cmap="hot")
-                plt.colorbar(im, ax=ax_err)
-            ax_err.set_title("|Error|")
-    plt.tight_layout()
-    return fig
-
-
 def plot_error_only(
     result: np.ndarray,
     analytical: np.ndarray,
@@ -411,6 +327,4 @@ def plot_error_only(
     ax_amp.set_title("Error — Amplitude")
     ax_phase.set_title("Error — Phase")
     plt.tight_layout()
-    return fig
-
     return fig

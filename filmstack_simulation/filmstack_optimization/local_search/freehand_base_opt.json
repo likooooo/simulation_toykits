@@ -1,0 +1,32 @@
+{
+  "n_wl": 100,
+  "freehand_cost_scope": "full",
+  "initial_preset_id": "custom",
+  "initial_formula": "air 0 MgF2 0.15154 TiO2 0.00815 MgF2 0.05059 TiO2 0.01118 MgF2 0.03130 TiO2 0.00720 MgF2 0.09352 N-BK7 0",
+  "polarization": "UNPOLARIZED",
+  "#thickness_min": 0.0,
+  "#thickness_max": 10.0,
+  "thickness_step_um": 0.00000001,
+  "optimizer": {
+    "method": "L-BFGS-B",
+    "options": {
+      "maxiter": 8,
+      "maxfun": 12,
+      "ftol": 1e-6,
+      "gtol": 1e-6,
+      "maxcor": 5,
+      "maxls": 10,
+      "disp": false
+    }
+  },
+  "#multi_start": {
+    "n_starts": 1,
+    "seed": 7,
+    "include_formula_x0": true
+  },
+  "verbose": false,
+  "cost_function": {
+    "path": "cost_freehand.py",
+    "name": "freehand_target"
+  }
+}

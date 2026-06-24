@@ -1,7 +1,9 @@
-# 本地构建时减小上下文、加快 COPY，避免把无关内容打进镜像
+# 减小构建上下文；运行时必需路径用 ! 保留
 .git
 .gitignore
 .gitmodules
+.github
+.cursor
 *.pyc
 __pycache__
 .pytest_cache
@@ -11,9 +13,26 @@ __pycache__
 env
 .venv
 venv
-.simulation_core
+dist
+agent
+test
+scripts
 *.md
+!docs/**
 !README.MD
-Dockerfile
-Dockerfile.local
 .dockerignore
+Dockerfile.hugging_face
+
+# simulation_core：仅保留 database 与 infrastructure/requirements.txt
+simulation_core/build
+simulation_core/tests
+simulation_core/src
+simulation_core/scripts
+simulation_core/3rdparty
+!simulation_core/3rdparty/infrastructure/requirements.txt
+simulation_core/assets/*
+!simulation_core/assets/database/**
+
+# .simulation_core 默认排除后显式纳入
+.simulation_core
+!.simulation_core/**

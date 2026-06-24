@@ -1,32 +1,34 @@
-"""Fresnel 专家智能体工具层：封装 core 与 simulation_database。需从仓库根运行以加载 simulation.so。"""
+"""Fresnel 专家智能体工具层：封装 filmstack_simulation 与 simulation_database。"""
 
 import os
-import sys
-import json
+from typing import Any, Dict, List, Optional
+
 import numpy as np
 import pandas as pd
-from typing import Any, Dict, List, Tuple, Optional
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
+import simulation  # noqa: F401
 
 
-def _material_nk_arrays(mat) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    from core.simulation_database_ui import material_nk_arrays
+def _filmstack_plugin():
+    import filmstack_visualizer
+
+    return filmstack_visualizer
+
+
+def _material_nk_arrays(mat) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    from simulation_database.database_ui import material_nk_arrays
     return material_nk_arrays(mat)
 
 
 def list_material_index(
     material_name: str,
-    csv_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """在 simulation_database materials 树中搜索材料名，返回匹配路径。"""
     key = (material_name or "").strip()
     if not key:
         return {"error": "material_name 不能为空"}
 
-    from core.simulation_database_ui import ensure_simulation_database_initialized, search_material_paths
+    from simulation_database.database_ui import ensure_simulation_database_initialized, search_material_paths
 
     sim_db = ensure_simulation_database_initialized()
     paths = search_material_paths(sim_db, key, db_name="materials")
@@ -62,9 +64,9 @@ def get_material_nk(
     if materials_db and book_id in materials_db:
         mat = materials_db[book_id]
     else:
-        from core.simulation_database_ui import (
+        from simulation_database.database_ui import (
             ensure_simulation_database_initialized,
-            read_material_by_path,
+            read_leaf_at_path,
         )
         sim_db = ensure_simulation_database_initialized()
         path_keys = page_id.split(" > ") if " > " in (page_id or "") else [book_id]
@@ -73,7 +75,7 @@ def get_material_nk(
         elif materials_db is None:
             path_keys = [book_id] if not page_id or page_id == book_id else [book_id, page_id]
         try:
-            mat = read_material_by_path(sim_db, shelf_id or "materials", path_keys)
+            mat = read_leaf_at_path(sim_db, shelf_id or "materials", path_keys)
         except Exception:
             mat = None
 
@@ -119,32 +121,34 @@ def export_nk_to_csv(shelf_id: str, book_id: str, page_id: str, out_path: str) -
         return {"error": str(e), "path": out_path}
 
 
-def parse_film_formula(formula: str) -> Dict[str, Any]:
-    from core.formula import parse_formula_v1
+def parse_film_formula(
+    formula: str,
+    materials_db: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Parse formula with bookend expansion (same chain as compute_filmstack)."""
     try:
-        layers = parse_formula_v1(formula)
+        import simulation
+
+        fv = _filmstack_plugin()
+        materials, thicknesses_um, _ = fv.resolve_formula_stack(
+            formula, materials_db or {}, simulation_module=simulation
+        )
+        layers = [
+            {
+                "Material": fv.material_unique_name(mat),
+                "Thickness_um": float(th),
+            }
+            for mat, th in zip(materials, thicknesses_um)
+        ]
         return {"layers": layers, "formula": formula}
     except Exception as e:
         return {"error": str(e), "formula": formula}
 
 
-def layers_to_nk_list(
-    layers: List[Dict],
-    wl_um: float,
-    materials_db: Optional[Dict[str, Any]] = None,
-) -> Tuple[List[complex], Optional[str]]:
-    from core.materials import get_nk_at_wavelength
-    if materials_db is None:
-        materials_db = {}
-    nk_list = []
-    for layer in layers:
-        name = layer.get("Material", "Vacuum")
-        n_val, k_val = layer.get("n"), layer.get("k")
-        if n_val is not None and k_val is not None:
-            nk_list.append(float(n_val) + 1j * float(k_val))
-            continue
-        nk_list.append(get_nk_at_wavelength(materials_db, name, wl_um))
-    return nk_list, None
+def _resolve_stack(formula: str, materials_db: Optional[Dict[str, Any]]):
+    from filmstack_simulation.simulation import resolve_stack_with_layers
+
+    return resolve_stack_with_layers(formula, materials_db)
 
 
 def compute_filmstack(
@@ -154,56 +158,42 @@ def compute_filmstack(
     materials_db: Optional[Dict[str, Any]] = None,
     out_figure_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    from core.formula import parse_formula_v1
-    from core.materials import with_nk_columns, get_nk_at_wavelength
-    from core.films import compute_fresnel_and_filmstack
-
-    if materials_db is None:
-        materials_db = {}
-
-    parsed = parse_film_formula(formula)
-    if "error" in parsed:
-        return parsed
-    layers = parsed["layers"]
-    if len(layers) < 2:
-        return {"error": "至少需要两层（入射介质与基底）", "formula": formula}
-
-    df = pd.DataFrame(layers)
-    df = with_nk_columns(
-        df, wl_um,
-        lambda name: get_nk_at_wavelength(materials_db, name, wl_um),
-    )
-    names = df["Material"].tolist()
-    nk_list = [n + 1j * k for n, k in zip(df["n"].tolist(), df["k"].tolist())]
-    thickness_list = df["Thickness (um)"].tolist()
+    from filmstack_simulation.simulation import compute_rt_and_coefficients
 
     try:
-        result = compute_fresnel_and_filmstack(
-            material_names=names,
-            nk_list=nk_list,
-            thickness_list=thickness_list,
-            angle_deg=angle_deg,
-            wl_um=wl_um,
+        materials, thicknesses, layers = _resolve_stack(formula, materials_db)
+    except Exception as e:
+        return {"error": str(e), "formula": formula}
+    if len(materials) < 2:
+        return {"error": "至少需要两层（入射介质与基底）", "formula": formula}
+
+    th_rad = np.deg2rad(angle_deg)
+    try:
+        (R_s, T_s, R_p, T_p), (r_s, t_s, r_p, t_p) = compute_rt_and_coefficients(
+            layers, th_rad, wl_um
         )
     except Exception as e:
         return {"error": str(e), "formula": formula}
+
+    fv = _filmstack_plugin()
+    filmstack_fig = fv.plot_filmstack(layers, show=False)
 
     out = {
         "formula": formula,
         "angle_deg": angle_deg,
         "wl_um": wl_um,
-        "R_s": result.R_s,
-        "T_s": result.T_s,
-        "R_p": result.R_p,
-        "T_p": result.T_p,
-        "r_s": str(result.r_s),
-        "t_s": str(result.t_s),
-        "r_p": str(result.r_p),
-        "t_p": str(result.t_p),
+        "R_s": R_s,
+        "T_s": T_s,
+        "R_p": R_p,
+        "T_p": T_p,
+        "r_s": str(r_s),
+        "t_s": str(t_s),
+        "r_p": str(r_p),
+        "t_p": str(t_p),
     }
     if out_figure_path:
         try:
-            result.filmstack_fig.savefig(out_figure_path, dpi=150, bbox_inches="tight")
+            filmstack_fig.savefig(out_figure_path, dpi=150, bbox_inches="tight")
             out["figure_path"] = os.path.abspath(out_figure_path)
         except Exception as e:
             out["figure_save_error"] = str(e)
@@ -239,51 +229,36 @@ def compute_angle_vs_rt(
     angles_deg: Optional[List[float]] = None,
     out_figure_path: Optional[str] = None,
     out_figure_rt_path: Optional[str] = None,
-    out_figure_nk_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    out_figure_path = out_figure_path or out_figure_rt_path or out_figure_nk_path
-    if materials_db is None or not isinstance(materials_db, dict):
-        materials_db = {}
-    from core.formula import parse_formula_v1
-    from core.materials import with_nk_columns, get_nk_at_wavelength
-    from core.fresnel import build_tmm_layers
-    from core.spectral import compute_angle_vs_RT_figures
+    from filmstack_simulation.sweep import compute_angle_vs_RT_data
+
+    out_figure_path = out_figure_path or out_figure_rt_path
     if angles_deg is None:
         angles_deg = np.linspace(0, 89, 90).tolist()
-    angles_deg = np.asarray(angles_deg)
-
-    parsed = parse_film_formula(formula)
-    if "error" in parsed:
-        return parsed
-    layers_data = parsed["layers"]
-    if len(layers_data) < 2:
-        return {"error": "至少需要两层", "formula": formula}
-
-    df = with_nk_columns(
-        pd.DataFrame(layers_data), wl_um,
-        lambda n: get_nk_at_wavelength(materials_db, n, wl_um),
-    )
-    nk_list = [n + 1j * k for n, k in zip(df["n"].tolist(), df["k"].tolist())]
-    thickness_list = df["Thickness (um)"].tolist()
-    tmm_layers = build_tmm_layers(nk_list, thickness_list)
+    angles_arr = np.asarray(angles_deg, dtype=float)
 
     try:
-        figs = compute_angle_vs_RT_figures(tmm_layers, wl_um, angles_deg)
+        materials, thicknesses, layers = _resolve_stack(formula, materials_db)
     except Exception as e:
         return {"error": str(e), "formula": formula}
+    if len(materials) < 2:
+        return {"error": "至少需要两层", "formula": formula}
+
+    data = compute_angle_vs_RT_data(layers, wl_um, angles_arr)
+    rs, rp, ts, tp = data["R_s"], data["R_p"], data["T_s"], data["T_p"]
+
+    fig = _filmstack_plugin().plot_RT_vs_angle(angles_arr, rs, rp, ts, tp, wl_um)
     figure_saved = None
-    if figs:
-        for path in (out_figure_path, out_figure_rt_path, out_figure_nk_path):
-            if path:
-                try:
-                    figs[0].savefig(path, dpi=150, bbox_inches="tight")
-                    figure_saved = figure_saved or os.path.abspath(path)
-                except Exception:
-                    pass
+    if out_figure_path:
+        try:
+            fig.savefig(out_figure_path, dpi=150, bbox_inches="tight")
+            figure_saved = os.path.abspath(out_figure_path)
+        except Exception:
+            pass
     return {
         "formula": formula,
         "wl_um": wl_um,
-        "angles_deg": angles_deg.tolist(),
+        "angles_deg": angles_arr.tolist(),
         "figure_saved": figure_saved,
     }
 
@@ -298,42 +273,28 @@ def compute_wavelength_vs_rt(
     out_figure_rt_path: Optional[str] = None,
     out_figure_nk_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    from core.formula import parse_formula_v1
-    from core.materials import with_nk_columns, get_nk_at_wavelength
-    from core.fresnel import build_tmm_layers
-    from core.spectral import compute_wavelength_vs_RT_figures, build_nk_map_for_wavelengths
+    from filmstack_simulation.sweep import compute_wavelength_vs_RT_data
 
-    if materials_db is None:
-        materials_db = {}
     wls = np.linspace(wl_min_um, wl_max_um, num_points)
-    parsed = parse_film_formula(formula)
-    if "error" in parsed:
-        return parsed
-    layers_data = parsed["layers"]
-    if len(layers_data) < 2:
-        return {"error": "至少需要两层", "formula": formula}
-
-    wl_center = float(np.mean(wls))
-    df = with_nk_columns(
-        pd.DataFrame(layers_data), wl_center,
-        lambda n: get_nk_at_wavelength(materials_db, n, wl_center),
-    )
-    names = df["Material"].tolist()
-    n_col = df["n"].tolist()
-    k_col = df["k"].tolist()
-    nk_list_0 = [n + 1j * k for n, k in zip(n_col, k_col)]
-    thickness_list = df["Thickness (um)"].tolist()
-    tmm_layers = build_tmm_layers(nk_list_0, thickness_list)
-    nk_map, _ = build_nk_map_for_wavelengths(
-        names, n_col, k_col, wls, materials_db,
-        lambda name, w: get_nk_at_wavelength(materials_db, name, w),
-    )
-
     try:
-        fig_rt, fig_nk, _ = compute_wavelength_vs_RT_figures(tmm_layers, names, nk_map, wls, angle_deg)
+        materials, thicknesses, layers = _resolve_stack(formula, materials_db)
     except Exception as e:
         return {"error": str(e), "formula": formula}
-    out = {"formula": formula, "angle_deg": angle_deg, "wl_range": [wl_min_um, wl_max_um], "num_points": num_points}
+    if len(materials) < 2:
+        return {"error": "至少需要两层", "formula": formula}
+
+    fv = _filmstack_plugin()
+    data = compute_wavelength_vs_RT_data(layers, wls, angle_deg)
+    rs, rp, ts, tp = data["R_s"], data["R_p"], data["T_s"], data["T_p"]
+
+    fig_rt = fv.plot_RT_vs_wavelength(wls, rs, rp, ts, tp, angle_deg)
+    fig_nk = fv.plot_filmstack_material_nk_1x2(fv.unique_materials_in_stack(materials), wls)
+    out = {
+        "formula": formula,
+        "angle_deg": angle_deg,
+        "wl_range": [wl_min_um, wl_max_um],
+        "num_points": num_points,
+    }
     if out_figure_rt_path:
         fig_rt.savefig(out_figure_rt_path, dpi=150, bbox_inches="tight")
         out["figure_rt_path"] = os.path.abspath(out_figure_rt_path)

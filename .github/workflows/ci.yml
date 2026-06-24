@@ -81,7 +81,7 @@ jobs:
       - name: Configure and build (Release, minimal)
         working-directory: simulation_core
         run: |
-          source 3rdparty/infrastructure/scripts/init-build-env.sh
+          source 3rdparty/infrastructure/scripts/init-inf-build-env.sh
           source ../.venv/bin/activate
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build -j"$(nproc)" --target simulation test_diffraction
@@ -92,19 +92,29 @@ jobs:
           source ../.venv/bin/activate
           python scripts/collect_simulation.py -b build -o ../.simulation_core
           cp build/test_diffraction ../.simulation_core/
+          test -d ../.simulation_core/simulation_plugins
+          test -f ../.simulation_core/simulation_plugins/filmstack_visualizer.py
+          test -f ../.simulation_core/simulation_plugins/simulation_paths.py
 
       - name: Smoke import simulation.so
         run: |
           source .venv/bin/activate
-          LD_LIBRARY_PATH=${{ github.workspace }}/.simulation_core \
-            python -c "import sys; sys.path.insert(0,'${{ github.workspace }}/.simulation_core'); import simulation; print('OK')"
+          source scripts/init-toykits-build-env.sh
+          cd "${{ github.workspace }}"
+          python -c "
+          import simulation
+          import filmstack_visualizer
+          print('OK')
+          "
 
       - name: Run tests
         run: |
           source .venv/bin/activate
-          LD_LIBRARY_PATH=${{ github.workspace }}/.simulation_core \
-          SIMULATION_LOCAL_ROOT=${{ github.workspace }}/simulation_core/assets/database \
-            python -m pytest test/ -v --tb=short
+          source scripts/init-toykits-build-env.sh
+          cd "${{ github.workspace }}"
+          python scripts/check_import_contract.py
+          python -m pytest test/ -v --tb=short
+          python -m pytest simulation_core/tests/test_gen_sweep_table.py -q --tb=short
 
       - name: Deploy to Hugging Face Space
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
@@ -119,4 +129,4 @@ jobs:
             https://raw.githubusercontent.com/huggingface/xet-core/refs/heads/main/git_xet/install.sh | sh
           git xet install
           source .venv/bin/activate
-          python scripts/refresh_hugging_face.py
+          python scripts/deploy.py hf

@@ -1,38 +1,33 @@
-"""Fresnel 页面共用的 session 初始化与对 core 的薄封装。"""
+"""Shared session helpers and thin wrappers for Gaussian optics / workspace pages."""
 
-import base64
 import io
 from pathlib import Path
 from typing import Any, Callable, List
 
-import pandas as pd
 import streamlit as st
 
-
-PYPLOT_PAGE_WIDTH_RATIO = 0.8
+from core.materials import get_nk_at_wavelength as _core_get_nk_at_wavelength
+from simulation_database.workspace import ensure_sim_workspace, get_workspace_materials
 
 
 def pyplot_fixed_width(fig, width: int = None, dpi: int = 100):
     """将 matplotlib Figure 以 80% 页宽渲染（CSS），避免界面抖动；传 width 时按像素固定宽。"""
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
-    buf.seek(0)
     if width is not None:
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
+        buf.seek(0)
         st.image(buf, width=width)
-    else:
-        b64 = base64.b64encode(buf.getvalue()).decode()
-        ratio_pct = int(PYPLOT_PAGE_WIDTH_RATIO * 100)
-        st.markdown(
-            f'<div style="width:{ratio_pct}%; margin:0 auto;">'
-            f'<img src="data:image/png;base64,{b64}" style="width:100%; height:auto; display:block;"/>'
-            "</div>",
-            unsafe_allow_html=True,
-        )
+        return
+    from filmstack_simulation.plots import show_figure
+
+    show_figure(fig, dpi=dpi)
 
 
 def video_fixed_width(video_bytes: bytes, format: str = "video/mp4"):
     """与 pyplot_fixed_width 一致：视频占页宽 80%（通过 st.columns 实现）。"""
-    ratio = PYPLOT_PAGE_WIDTH_RATIO
+    from filmstack_simulation.plots import PAGE_WIDTH_RATIO
+
+    ratio = PAGE_WIDTH_RATIO
     left = (1 - ratio) / 2
     right = (1 - ratio) / 2
     cols = st.columns([left, ratio, right])
@@ -68,106 +63,24 @@ def build_beam_result_mat(field: Any, meta: dict) -> bytes:
     return buf.getvalue()
 
 
-def build_film_result_mat(result: Any, wl: float, angle_deg: float) -> bytes:
-    """由 films 页的 Fresnel 结果生成 .mat 字节（R/T、r/t、波长、角度）。"""
-    from scipy.io import savemat
-
-    buf = io.BytesIO()
-    savemat(
-        buf,
-        {
-            "R_s": result.R_s,
-            "T_s": result.T_s,
-            "R_p": result.R_p,
-            "T_p": result.T_p,
-            "r_s": result.r_s,
-            "t_s": result.t_s,
-            "r_p": result.r_p,
-            "t_p": result.t_p
-        },
-        format="5",
-        do_compression=False,
-    )
-    return buf.getvalue()
-
-
-def build_spectral_curve_result_mat(data: dict) -> bytes:
-    """由光谱曲线页的结果数据生成 .mat 字节（不含 meta）。"""
-    from scipy.io import savemat
-
-    buf = io.BytesIO()
-    savemat(buf, data, format="5", do_compression=False)
-    return buf.getvalue()
-
-
-def build_angular_map_result_mat(data: dict) -> bytes:
-    """由角度-光谱图页的结果数据生成 .mat 字节（不含 meta）。"""
-    from scipy.io import savemat
-
-    buf = io.BytesIO()
-    savemat(buf, data, format="5", do_compression=False)
-    return buf.getvalue()
-
-from core import materials as core_materials
-from core.simulation_database_ui import vacuum_material
-
-
-def init_materials_db():
-    st.session_state["materials_db"] = {}
-    st.session_state["materials_db"]["Vacuum"] = vacuum_material()
-
-
-def init_layer_config():
-    st.session_state["layer_config"] = pd.DataFrame(
-        [{"Material": "Vacuum", "Thickness (um)": 0.0, "n": 1, "k": 0}]
-    )
-
-
 def ensure_fresnel_session_state():
-    """保证 Fresnel 相关页面用到的 session 键都存在（新 session 或直接打开子页时必调）。"""
-    if "materials_db" not in st.session_state:
-        init_materials_db()
-    if "layer_config" not in st.session_state:
-        init_layer_config()
+    """Ensure session keys used by diffraction / workspace pages exist."""
+    ensure_sim_workspace()
     if "wavelength" not in st.session_state:
         st.session_state["wavelength"] = 0.532
-    if "degree" not in st.session_state:
-        st.session_state["degree"] = 15
-    if "film_stack_code" not in st.session_state:
-        st.session_state["film_stack_code"] = (
-            "Vacuum 0 1 0 SiO2  0.12874 1.4621 1.4254e-5 Ta2O5  0.04396 2.1548  0.00021691 "
-            "SiO2 0.27602 1.4621 1.4254e-5 Ta2O5 0.01699 2.1548  0.00021691  "
-            "SiO2  0.24735 1.4621 1.4254e-5 fused_silica 0 1.4607 0"
-        )
-
-
-ensure_fresnel_session_state()
 
 
 def get_nk_at_wavelength(name, wl_um):
-    """从 session 材料库与波长取 nk，依赖 core.materials；错误时展示 st.error 并返回 1+0j。"""
-    materials_db = st.session_state.get("materials_db", {})
+    """Look up nk from workspace materials; show st.error and re-raise on failure."""
+    materials_db = get_workspace_materials()
     try:
-        return core_materials.get_nk_at_wavelength(materials_db, name, wl_um)
-    except Exception:
+        return _core_get_nk_at_wavelength(materials_db, name, wl_um)
+    except Exception as exc:
         st.error(
-            f"加载材料 {name} (@ {wl_um} um) 出错.\n"
-            "1. 请在 Material Database 中添加材料;\n2. 检查材料波长在范围内;\n"
+            f"加载材料 {name} (@ {wl_um} μm) 出错.\n"
+            "1. 请在仿真数据库中添加材料;\n2. 检查材料波长在范围内;\n"
         )
-        return 1.0 + 0.0j
-
-
-def with_nk_columns(df, wl_um):
-    """为层配置表补全 n、k 列，通过 core.materials；get_nk 使用当前 session 材料库。"""
-    materials_db = st.session_state.get("materials_db", {})
-
-    def get_nk(name):
-        try:
-            return core_materials.get_nk_at_wavelength(materials_db, name, wl_um)
-        except Exception:
-            return 1.0 + 0.0j
-
-    return core_materials.with_nk_columns(df, wl_um, get_nk)
+        raise exc
 
 
 def ensure_beams_session_state():
@@ -177,7 +90,7 @@ def ensure_beams_session_state():
 
 
 def page_key_from_file(file_path: str) -> str:
-    """Stable page key from script path, e.g. 'pages/beams_caculator/plane-wave.py' -> 'plane-wave'."""
+    """Stable page key from script path, e.g. 'pages/gaussian_optics_toolkits/plane wave.py' -> 'plane wave'."""
     return Path(file_path).stem
 
 
@@ -189,26 +102,12 @@ PDE_CACHE_KEY_TO_LABEL = {
     "quadratic wave": "Quadratic Wave",
     "hermite gaussian beam": "Hermite-Gaussian Beam",
     "laguerre gaussian beam": "Laguerre-Gaussian Beam",
-    "spectral_R_s": "光谱曲线 R_s (TE 反射)",
-    "spectral_R_p": "光谱曲线 R_p (TM 反射)",
-    "spectral_T_s": "光谱曲线 T_s (TE 透射)",
-    "spectral_T_p": "光谱曲线 T_p (TM 透射)",
-    "angular_R_s": "角度-光谱图 R_s (TE)",
-    "angular_T_s": "角度-光谱图 T_s (TE)",
-    "angular_R_p": "角度-光谱图 R_p (TM)",
-    "angular_T_p": "角度-光谱图 T_p (TM)",
 }
 
 
 def get_available_materials() -> List[str]:
-    """Material names from session DB plus layer_config (deduplicated, order preserved)."""
-    db_materials = list(st.session_state.get("materials_db", {}).keys())
-    config_materials: List[str] = []
-    if "layer_config" in st.session_state:
-        df = st.session_state["layer_config"]
-        if isinstance(df, pd.DataFrame) and "Material" in df.columns:
-            config_materials = df["Material"].dropna().unique().tolist()
-    return list(dict.fromkeys(db_materials + config_materials))
+    """Material names from workspace (deduplicated, order preserved)."""
+    return list(get_workspace_materials().keys())
 
 
 def page_grid_init(key_prefix=""):
@@ -233,20 +132,20 @@ def page_plane_wave_init(key_prefix="pw"):
     return wavelength, theta_deg, phi_deg
 
 
-def page_quadratic_wave_init(key_prefix="qw"):
-    """Render quadratic wave params, return (wavelength, z_ratio)."""
+def page_z_ratio_wave_init(key_prefix="zr"):
+    """Render z-ratio wave params, return (wavelength, z_ratio)."""
     st.caption("Beam parameters:")
     wavelength = st.number_input("Wavelength (µm)", value=1.1, format="%.4f", key=f"{key_prefix}_wl")
     z_ratio = st.number_input("z ratio (z = z ratio × wavelength)", value=0.25, format="%.2f", key=f"{key_prefix}_zr")
     return wavelength, z_ratio
+
+
+def page_quadratic_wave_init(key_prefix="qw"):
+    return page_z_ratio_wave_init(key_prefix)
 
 
 def page_spherical_wave_init(key_prefix="sw"):
-    """Render spherical wave params, return (wavelength, z_ratio)."""
-    st.caption("Beam parameters:")
-    wavelength = st.number_input("Wavelength (µm)", value=1.1, format="%.4f", key=f"{key_prefix}_wl")
-    z_ratio = st.number_input("z ratio (z = z ratio × wavelength)", value=0.25, format="%.2f", key=f"{key_prefix}_zr")
-    return wavelength, z_ratio
+    return page_z_ratio_wave_init(key_prefix)
 
 
 def page_flat_top_init(key_prefix="ft"):
@@ -318,7 +217,6 @@ def render_table_editor(
     left_buttons = left_buttons or []
     # 标题前一行：左侧按钮（如刷新坐标轴）、添加、清空
     n_left = len(left_buttons)
-    n_total = n_left + 2
     row_cols = st.columns([1] * n_left + [1, 1])
     for i, lb in enumerate(left_buttons):
         with row_cols[i]:
@@ -375,12 +273,16 @@ def get_plane_wave_params_from_session(key_prefix):
     )
 
 
-def get_quadratic_wave_params_from_session(key_prefix):
+def get_z_ratio_wave_params_from_session(key_prefix):
     return (float(_p(key_prefix, "wl", 1.1)), float(_p(key_prefix, "zr", 0.25)))
+
+
+def get_quadratic_wave_params_from_session(key_prefix):
+    return get_z_ratio_wave_params_from_session(key_prefix)
 
 
 def get_spherical_wave_params_from_session(key_prefix):
-    return (float(_p(key_prefix, "wl", 1.1)), float(_p(key_prefix, "zr", 0.25)))
+    return get_z_ratio_wave_params_from_session(key_prefix)
 
 
 def get_flat_top_params_from_session(key_prefix):
@@ -432,3 +334,66 @@ def get_laguerre_gaussian_params_from_session(key_prefix):
         zr * wl,
         float(_p(key_prefix, "w0", 1.0)),
     )
+
+
+def render_filmstack_host(*, render_page, PageContext) -> None:
+    """Shared bootstrap for filmstack simulation / optimization host pages."""
+    from simulation_database.workspace import ensure_sim_workspace_ui, get_workspace_materials
+
+    ui = ensure_sim_workspace_ui()
+    materials_db = get_workspace_materials()
+    render_page(
+        context=PageContext(
+            get_materials_db=get_workspace_materials,
+            sim_wl_from=ui.sim_wl_from,
+            sim_wl_to=ui.sim_wl_to,
+        ),
+        materials_db=materials_db,
+    )
+
+
+def render_beam_compute_fragment(
+    *,
+    key_prefix: str,
+    page_key: str,
+    title_prefix: str,
+    mat_filename: str,
+    get_beam_params,
+    compute_field,
+) -> None:
+    """Shared @st.fragment compute/result block for Gaussian optics beam pages."""
+
+    @st.fragment
+    def compute_and_result():
+        x_min, x_max, y_min, y_max, nx, ny = get_grid_params_from_session(key_prefix)
+        beam_params = get_beam_params(key_prefix)
+        if st.button("▶️ 计算", width="stretch", key=f"{key_prefix}_btn"):
+            try:
+                start_xy = [x_min, y_min]
+                end_xy = [x_max, y_max]
+                shape_xy = [nx, ny]
+                field, meta = compute_field(beam_params, start_xy, end_xy, shape_xy)
+                from core import show_complex_plot
+
+                fig = show_complex_plot(field, meta, title_prefix=title_prefix)
+                st.session_state["beams_result_cache"][page_key] = {
+                    "field": field,
+                    "meta": meta,
+                    "fig": fig,
+                }
+            except Exception as e:
+                st.error(str(e))
+        st.divider()
+        st.subheader("Result")
+        cache = st.session_state.get("beams_result_cache", {})
+        if page_key in cache:
+            entry = cache[page_key]
+            pyplot_fixed_width(entry["fig"])
+            import numpy as np
+
+            f = entry["field"]
+            st.caption(f"Shape {f.shape}, max |U| = {float(np.max(np.abs(f))):.4e}")
+            mat_bytes = build_beam_result_mat(f, entry["meta"])
+            save_result_mat_button(mat_bytes, mat_filename, f"{key_prefix}_save_mat")
+
+    compute_and_result()

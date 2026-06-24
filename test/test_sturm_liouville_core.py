@@ -1,7 +1,6 @@
 """Smoke tests for core.sturm_liouville."""
 
 import io
-import os
 
 import numpy as np
 import pytest
@@ -37,14 +36,6 @@ def _axes_2d_dirichlet(n, length=1.0):
         {"n_points": n, "length": length, "bc_from": "dirichlet", "bc_to": "dirichlet", "p": 1.0, "q": 0.0},
         {"n_points": n, "length": length, "bc_from": "dirichlet", "bc_to": "dirichlet", "p": 1.0, "q": 0.0},
     ]
-
-
-def _skip_if_no_simulation():
-    try:
-        from core import simulation_loader
-        simulation_loader.get_simulation_module()
-    except (ImportError, FileNotFoundError):
-        pytest.skip("simulation.so not available")
 
 
 # -----------------------------------------------------------------------------
@@ -125,34 +116,12 @@ class TestBuildResultMat:
 
 
 # -----------------------------------------------------------------------------
-# PlotResultAndError
-# -----------------------------------------------------------------------------
-
-
-class TestPlotResultAndError:
-    def test_returns_figure_2d(self):
-        arr = np.random.randn(10, 10)
-        fig = sturm_liouville.plot_result_and_error(arr)
-        assert fig is not None and hasattr(fig, "axes")
-        import matplotlib.pyplot as plt
-        plt.close(fig)
-
-    def test_returns_figure_with_error(self):
-        arr = np.random.randn(8, 8)
-        fig = sturm_liouville.plot_result_and_error(arr, error=np.abs(arr))
-        assert len(fig.axes) >= 2
-        import matplotlib.pyplot as plt
-        plt.close(fig)
-
-
-# -----------------------------------------------------------------------------
 # RunSturmLiouville (requires simulation.so)
 # -----------------------------------------------------------------------------
 
 
 class TestRunSturmLiouville:
     def test_apply_L_2d_periodic(self):
-        _skip_if_no_simulation()
         n = 8
         axes_config = _axes_2d_periodic(n, length=1)
         x = np.linspace(0, axes_config[0]["length"], n, endpoint=False)
@@ -167,7 +136,6 @@ class TestRunSturmLiouville:
         np.testing.assert_allclose(np.real(res["result"]), expected, atol=1e-10)
 
     def test_solve_L_2d_dirichlet(self):
-        _skip_if_no_simulation()
         axes_config = _axes_2d_dirichlet(6)
         f = np.ones((6, 6))
         res = sturm_liouville.run_sturm_liouville(axes_config, {"f": f})
@@ -175,7 +143,6 @@ class TestRunSturmLiouville:
         assert res["result"].shape == (6, 6)
 
     def test_with_analytical_returns_error(self):
-        _skip_if_no_simulation()
         axes_config = _axes_2d_dirichlet(4)
         f = np.ones((4, 4))
         analytical = np.zeros((4, 4))

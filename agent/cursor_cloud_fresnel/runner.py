@@ -10,23 +10,18 @@ import sys
 import time
 from typing import Optional, Tuple
 
-_AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
-_REPO_ROOT = os.path.dirname(os.path.dirname(_AGENT_DIR))
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
+from agent.fresnel_caculator.tools import run_tool
 
 from agent.cursor_cloud_fresnel.cursor_api import (
     create_agent,
     followup,
     get_conversation,
     list_repositories,
-    wait_until_idle,
 )
 from agent.cursor_cloud_fresnel.prompts import (
     CLOUD_AGENT_INSTRUCTIONS,
     build_user_prompt,
 )
-from agent.fresnel_caculator.tools import run_tool
 
 TOOL_CALL_PREFIX = "TOOL_CALL:"
 TOOL_RESULT_PREFIX = "TOOL_RESULT:"

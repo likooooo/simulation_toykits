@@ -1,0 +1,4 @@
+from common import render_filmstack_host
+from filmstack_simulation.filmstack_optimization.local_search.page import PageContext, render_page
+
+render_filmstack_host(render_page=render_page, PageContext=PageContext)
