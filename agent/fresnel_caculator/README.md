@@ -12,20 +12,22 @@
 
 1. Python 3.10+（与主仓库一致）
 2. Ollama + 支持工具调用的模型（默认 `qwen2.5:7b`）；Docker 部署见 [docker/README.md](docker/README.md)
-3. `.simulation_core/simulation.so`（`python scripts/deploy.py local`）；运行前 `source scripts/init-toykits-build-env.sh`
-4. 材料库：`simulation_core/assets/database`（`simulation_database` 自动初始化）
+3. `.simulation_core/simulation.so`（`python scripts/build_toykits.py`）；pytest 显式 `LD_LIBRARY_PATH=.simulation_core`
+4. 材料库：collect 后 `SIMULATION_DATABASE_DIR` 指向 `.simulation_core/assets/database`（`source scripts/init-toykits-build-env.sh`）；构建前源码树在 `simulation_core/assets/database`
 
 ## 使用
 
 须在仓库根目录运行：
 
+自然语言示例中的「532nm」对应工具参数 `wl_um`（微米）；532 nm = 0.532 μm。
+
 ```bash
 cd /path/to/simulation_toykits
 
-# 单点 R/T（532 nm，0°）
+# 单点 R/T（532 nm = 0.532 μm，0°）
 python -m agent.fresnel_caculator.run_agent "请计算 air 0 SiO2 0.1 air 0 在 532nm、0 度下的 R 和 T"
 
-# 指定输出目录与模型
+# 指定输出目录与模型（设计波长 532 nm = 0.532 μm）
 python -m agent.fresnel_caculator.run_agent "设计一个 532nm 高反膜，R>99%" -o ./out -m qwen2.5:7b
 
 # 迭代设计

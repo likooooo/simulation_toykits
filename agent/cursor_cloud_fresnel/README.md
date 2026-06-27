@@ -16,14 +16,14 @@
 ## 环境要求
 
 1. **Python**：与仓库一致（建议 3.10+），从**仓库根目录**运行。
-2. **Python 依赖（requirements.txt）**：本 Agent 调用的工具依赖仓库中的 **core** 模块（材料库、膜系计算、R/T 等）。**若要调用 core 里的工具，必须先按仓库根目录的 `requirements.txt` 初始化运行环境**，例如：`pip install -r requirements.txt`。否则 Runner 在执行 TOOL_CALL 时会因缺少依赖或 core 加载失败而报错。
+2. **Python 依赖（requirements.txt）**：本 Agent 调用的工具依赖 `simulation.so`、`filmstack_visualizer` 与 `simulation_database_parser`。**须先按仓库根目录的 `requirements.txt` 初始化运行环境**，例如：`pip install -r requirements.txt`，并 `python scripts/build_toykits.py` + `source scripts/init-toykits-build-env.sh`。否则 Runner 在执行 TOOL_CALL 时会因缺少依赖或 simulation 加载失败而报错。
 3. **Cursor API Key**：在 [Cursor Dashboard → Integrations](https://cursor.com/dashboard?tab=integrations) 创建；设置环境变量 `CURSOR_API_KEY`。
 4. **GitHub 仓库**：Cloud Agents **只能使用「已在 Cursor 中关联」的仓库**（不是任意公开仓库即可）。请用 Cursor 打开该仓库、或在 [cursor.com](https://cursor.com) 设置中连接 GitHub 并授权该仓库；否则会报 `Failed to verify existence of branch 'main'`。创建 Agent 时传 `--repository`（该仓库的 clone URL）。可先运行 `--list-repos` 查看当前可用的仓库列表。
-5. **simulation.so、材料库**：与本地 [fresnel_caculator](../fresnel_caculator) 相同，需在运行 Runner 的机器上准备好（`.simulation_core/simulation.so` 与 `simulation_core/assets/database`）。
+5. **simulation.so、材料库**：与本地 [fresnel_caculator](../fresnel_caculator) 相同，需在运行 Runner 的机器上准备好（`source scripts/init-toykits-build-env.sh` 后 `.simulation_core/simulation.so` 与 `SIMULATION_DATABASE_DIR` 指向的 release 树）。
 
 ## 使用方式
 
-**必须从仓库根目录运行**（以便加载 `core` 与 simulation.so）：
+**必须从仓库根目录运行**（以便加载 `simulation.so` 与材料库）：
 
 ```bash
 cd /path/to/simulation_toykits
@@ -31,14 +31,14 @@ cd /path/to/simulation_toykits
 # 设置 Cursor API Key（网页 Dashboard → Integrations 创建）
 export CURSOR_API_KEY=key_xxx
 
-# 指定你的 GitHub 仓库 URL（必须可访问）
+# 指定你的 GitHub 仓库 URL（必须可访问）；设计波长 532 nm = wl_um 0.532 μm
 python -m agent.cursor_cloud_fresnel.runner \
   "设计一个 532nm 高反膜，R>99%" \
   --repository https://github.com/你的用户名/simulation_toykits \
   --output-dir ./cloud_out
 
-# 从 stdin 读 prompt
-echo "请计算 Vacuum 0 SiO2 0.1 Vacuum 0 在 532nm、0 度下的 R 和 T" | \
+# 从 stdin 读 prompt（532 nm = 0.532 μm）
+echo "请计算 air 0 SiO2 0.1 air 0 在 532nm、0 度下的 R 和 T" | \
   python -m agent.cursor_cloud_fresnel.runner -r https://github.com/你的用户名/simulation_toykits -o ./out
 ```
 
@@ -60,8 +60,7 @@ echo "请计算 Vacuum 0 SiO2 0.1 Vacuum 0 在 532nm、0 度下的 R 和 T" | \
 | 文件 | 说明 |
 |------|------|
 | `cursor_api.py` | Cursor Cloud Agents API：创建 Agent、拉取对话、发送 Follow-up。 |
-| `prompts.py` | Cloud Agent 的系统说明与 TOOL_CALL/TOOL_RESULT/ANSWER 约定。 |
-| `runner.py` | 入口：创建 Agent、轮询、解析 TOOL_CALL、本地执行工具、回传 TOOL_RESULT、解析 ANSWER。 |
+| `runner.py` | 入口：Cloud Agent 系统提示（`CLOUD_AGENT_INSTRUCTIONS`）、轮询、解析 TOOL_CALL、本地执行工具、回传 TOOL_RESULT、解析 ANSWER。 |
 
 工具实现复用 [fresnel_caculator/tools.py](../fresnel_caculator/tools.py)，不做重复开发。
 

@@ -1,5 +1,17 @@
 // Simulation database panel — tree, search, workspace
 
+let tokensStyleEl = null;
+
+function injectTokensCss(css) {
+  if (!css) return;
+  if (!tokensStyleEl) {
+    tokensStyleEl = document.createElement("style");
+    tokensStyleEl.setAttribute("data-design-tokens", "1");
+    document.head.appendChild(tokensStyleEl);
+  }
+  tokensStyleEl.textContent = css;
+}
+
 let lastArgs = null;
 let focusedPathId = null;
 let contextTarget = null;
@@ -124,7 +136,6 @@ function iconForNode(node) {
 function leafPreviewPayload(node) {
   return {
     action: "preview",
-    db_name: node.db_name,
     path_keys: node.path_keys,
     path_id: node.path_id,
     leaf_type: node.leaf_type,
@@ -134,7 +145,6 @@ function leafPreviewPayload(node) {
 function leafAddPayload(node) {
   return {
     action: "add",
-    db_name: node.db_name,
     path_keys: node.path_keys,
     path_id: node.path_id,
     leaf_type: node.leaf_type,
@@ -181,7 +191,6 @@ function renderTreeNode(node, depth) {
       sendAction({
         action: expanded ? "collapse" : "expand",
         path_id: node.path_id,
-        db_name: node.db_name,
         path_keys: node.path_keys,
       });
     });
@@ -215,7 +224,6 @@ function renderTreeNode(node, depth) {
         sendAction({
           action: "expand",
           path_id: node.path_id,
-          db_name: node.db_name,
           path_keys: node.path_keys,
         });
       }
@@ -256,7 +264,6 @@ function bindSearchResultClick(div, r) {
     clearTimeout(clickTimer);
     sendAction({
       action: "add",
-      db_name: r.db_name,
       path_keys: r.path_keys,
       path_id: r.path_id,
       leaf_type: r.leaf_type,
@@ -267,7 +274,6 @@ function bindSearchResultClick(div, r) {
     clickTimer = setTimeout(() => {
       sendAction({
         action: "preview",
-        db_name: r.db_name,
         path_keys: r.path_keys,
         path_id: r.path_id,
         leaf_type: r.leaf_type,
@@ -459,7 +465,6 @@ function showContextMenu(x, y, node) {
       hideContextMenu();
       const payload = {
         action: item.action,
-        db_name: node.db_name,
         path_keys: node.path_keys,
         path_id: node.path_id,
         leaf_type: node.leaf_type,
@@ -515,6 +520,7 @@ function applySection(section) {
 }
 
 function render(args) {
+  injectTokensCss(args.tokens_css || "");
   lastArgs = args;
   applySection(args.section || "all");
   bindHelpIcon(elBrowserHelp, args.browser_help_text || "");

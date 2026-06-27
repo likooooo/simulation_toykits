@@ -1,7 +1,9 @@
-"""Shared helpers for scripts/deploy.py."""
+#!/usr/bin/env python3
+"""simulation_toykits build and deploy CLI."""
 
 from __future__ import annotations
 
+import argparse
 import os
 import re
 import shutil
@@ -15,7 +17,6 @@ from typing import Optional
 
 RUNTIME_DIR = ".simulation_core"
 DEFAULT_BUILD_REL = Path("simulation_core/build")
-OGHMA_DB_SUBDIRS = ("materials", "filters", "spectra", "shape", "morphology")
 
 DEFAULT_HF_REPO = "git@hf.co:spaces/simulation-toykits/v1"
 HF_DEPLOY_DEST = "/tmp/simulation-toykits-hf-deploy"
@@ -44,6 +45,9 @@ HF_LFS_PATTERNS = (
     ".simulation_core/test_diffraction",
 )
 
+DEFAULT_STREAMLIT_PORT = 8052
+DEFAULT_STREAMLIT_ADDRESS = "0.0.0.0"
+
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
@@ -55,19 +59,6 @@ def simulation_core_root() -> Path:
 
 def runtime_dir() -> Path:
     return repo_root() / RUNTIME_DIR
-
-
-def plugin_source() -> Path:
-    return (
-        simulation_core_root()
-        / "3rdparty"
-        / "infrastructure"
-        / "py_core_plugins"
-    )
-
-
-def simulation_plugins_source() -> Path:
-    return simulation_core_root() / "simulation_plugins"
 
 
 def default_build_dir() -> Path:
@@ -109,69 +100,13 @@ def log(msg: str, *, err: bool = False) -> None:
     print(msg, file=sys.stderr if err else sys.stdout, flush=True)
 
 
-def sync_dir(src: Path, dst: Path) -> int:
-    if not src.is_dir():
-        print(f"错误: 源目录不存在: {src}", file=sys.stderr)
+def ensure_simulation_core() -> int:
+    simulation_root = simulation_core_root()
+    if not simulation_root.is_dir():
+        print(f"错误: 未找到 simulation_core 子模块目录: {simulation_root}", file=sys.stderr)
+        print("请先执行: git submodule update --init --recursive simulation_core", file=sys.stderr)
         return 1
-    dst.mkdir(parents=True, exist_ok=True)
-    src_names = {p.name for p in src.iterdir() if p.name != "__pycache__"}
-    for existing in list(dst.iterdir()):
-        if existing.name == "__pycache__":
-            continue
-        if existing.name not in src_names:
-            if existing.is_dir():
-                shutil.rmtree(existing)
-            else:
-                existing.unlink()
-            print(f"  删除过时项: {dst / existing.name}")
-    copied = 0
-    for path in sorted(src.iterdir()):
-        if path.name == "__pycache__":
-            continue
-        target = dst / path.name
-        if path.is_dir():
-            if target.exists():
-                shutil.rmtree(target)
-            shutil.copytree(path, target, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-        else:
-            shutil.copy2(path, target)
-        copied += 1
-        print(f"  {path.name} -> {target}")
-    print(f">>> 已同步 {copied} 项到 {dst}")
     return 0
-
-
-def sync_py_core_plugins(*, to_build: bool, to_runtime: bool) -> int:
-    src = plugin_source()
-    code = 0
-    if to_runtime:
-        code |= sync_dir(src, runtime_dir() / "py_core_plugins")
-    if to_build:
-        code |= sync_dir(src, simulation_core_root() / "build" / "py_core_plugins")
-    return code
-
-
-def sync_simulation_plugins(*, to_build: bool, to_runtime: bool) -> int:
-    src = simulation_plugins_source()
-    if not src.is_dir():
-        print(f"错误: simulation_plugins 源目录不存在: {src}", file=sys.stderr)
-        return 1
-    code = 0
-    if to_runtime:
-        code |= sync_dir(src, runtime_dir() / "simulation_plugins")
-    if to_build:
-        code |= sync_dir(src, simulation_core_root() / "build" / "simulation_plugins")
-    return code
-
-
-def clear_runtime_dir(target: Path) -> None:
-    if target.exists():
-        for child in target.iterdir():
-            if child.is_dir():
-                shutil.rmtree(child)
-            else:
-                child.unlink()
-    target.mkdir(parents=True, exist_ok=True)
 
 
 def copy_test_diffraction(path_to_build: Path, target: Path) -> None:
@@ -185,59 +120,49 @@ def copy_test_diffraction(path_to_build: Path, target: Path) -> None:
     print(f">>> 已复制 test_diffraction -> {dst}")
 
 
-def ensure_simulation_core() -> int:
-    simulation_root = simulation_core_root()
-    if not simulation_root.is_dir():
-        print(f"错误: 未找到 simulation_core 子模块目录: {simulation_root}", file=sys.stderr)
-        print("请先执行: git submodule update --init --recursive simulation_core", file=sys.stderr)
-        return 1
-    init_script = simulation_root / "3rdparty" / "infrastructure" / "scripts" / "init-inf-build-env.sh"
-    if init_script.is_file():
-        print(f">>> 提示: 若 cmake 失败，请先执行: source {init_script}")
-    return 0
-
-
-def prepare_local_runtime(path_to_build: Path) -> int:
+def run_build_pipeline(path_to_build: Path | None = None) -> int:
     if ensure_simulation_core() != 0:
         return 1
 
-    path_to_build.mkdir(parents=True, exist_ok=True)
+    build_dir = (path_to_build or default_build_dir()).resolve()
     target = runtime_dir()
-    print(f">>> 准备 {RUNTIME_DIR}/（build_dir={path_to_build}）...")
-
-    if sync_py_core_plugins(to_build=True, to_runtime=True) != 0:
-        return 1
-    if sync_simulation_plugins(to_build=True, to_runtime=True) != 0:
-        return 1
-
-    clear_runtime_dir(target)
     build_sim = simulation_core_root() / "scripts" / "build_simulation.py"
     if not build_sim.is_file():
         print(f"错误: 未找到 {build_sim}", file=sys.stderr)
         return 1
 
+    print(f">>> build pipeline: build_dir={build_dir} -> {RUNTIME_DIR}/")
     sim_cmd = [
         sys.executable,
         str(build_sim),
         "-B",
-        str(path_to_build),
+        str(build_dir),
         "--build-type",
         "Release",
         "--collect",
         str(target),
     ]
+    try:
+        run(sim_cmd, cwd=simulation_core_root())
+    except subprocess.CalledProcessError:
+        init_sh = repo_root() / "scripts" / "init-toykits-build-env.sh"
+        if init_sh.is_file():
+            print(f">>> Hint: if build failed, try: source {init_sh}", file=sys.stderr)
+        return 1
 
-    run(sim_cmd, cwd=simulation_core_root())
-    copy_test_diffraction(path_to_build, target)
-    print(f">>> 本地运行时已部署: {target}")
-    env_sh = repo_root() / "scripts" / "init-toykits-build-env.sh"
-    if env_sh.is_file():
-        print(f">>> 运行前可执行: source {env_sh}")
+    copy_test_diffraction(build_dir, target)
+    print(f">>> 运行时已收集: {target}")
     return 0
 
 
-DEFAULT_STREAMLIT_PORT = 8052
-DEFAULT_STREAMLIT_ADDRESS = "0.0.0.0"
+def local_runtime_env() -> dict[str, str]:
+    rt = runtime_dir().resolve()
+    return {
+        "LD_LIBRARY_PATH": f"{rt}:{os.environ.get('LD_LIBRARY_PATH', '')}".rstrip(":"),
+        "SIMULATION_DATABASE_DIR": str(rt / "assets" / "database"),
+        "SIMULATION_ARTIFACTS_DIR": str(rt),
+        "PYTHONPATH": f"{repo_root().resolve()}:{rt}:{os.environ.get('PYTHONPATH', '')}".rstrip(":"),
+    }
 
 
 def _process_cmdline(pid: int) -> str:
@@ -297,6 +222,10 @@ def start_local_server() -> int:
     address = DEFAULT_STREAMLIT_ADDRESS
     root = repo_root()
     app = root / "app.py"
+    rt = runtime_dir()
+    if not (rt / "simulation.so").is_file():
+        print(f"错误: 未找到 {rt / 'simulation.so'}，请先运行 build_toykits 或 build_toykits local", file=sys.stderr)
+        return 1
     if not app.is_file():
         print(f"错误: 未找到 {app}", file=sys.stderr)
         return 1
@@ -316,60 +245,69 @@ def start_local_server() -> int:
 
     stop_streamlit_on_port(port)
 
-    env_sh = repo_root() / "scripts" / "init-toykits-build-env.sh"
+    env = {**os.environ, **local_runtime_env()}
     cmd = [
-        "bash",
-        "-lc",
-        f"source {env_sh} && cd {root} && exec streamlit run {app} "
-        f"--server.port={port} --server.address={address}",
+        "streamlit",
+        "run",
+        str(app),
+        f"--server.port={port}",
+        f"--server.address={address}",
     ]
     print(f">>> 启动 Streamlit: http://localhost:{port}/")
-    return subprocess.run(cmd, cwd=root).returncode
+    print(f">>> LD_LIBRARY_PATH={env['LD_LIBRARY_PATH']}")
+    print(f">>> SIMULATION_DATABASE_DIR={env['SIMULATION_DATABASE_DIR']}")
+    return subprocess.run(cmd, cwd=root, env=env).returncode
 
 
 def resolve_database_source(explicit: str = "") -> Path:
     candidates: list[Path] = []
     if explicit:
         candidates.append(Path(explicit).expanduser())
+    collected = runtime_dir() / "assets" / "database"
+    if collected.is_dir():
+        candidates.append(collected)
     env_root = os.environ.get("SIMULATION_DATABASE_DIR", "").strip()
     if env_root:
         candidates.append(Path(env_root).expanduser())
-    candidates.extend(
-        [
-            Path.home() / ".oghma_local",
-        ]
-    )
     seen: set[Path] = set()
     for raw in candidates:
         path = raw.resolve()
         if path in seen:
             continue
         seen.add(path)
-        if (path / "materials").is_dir() and any((path / "materials").iterdir()):
+        if (path / "oghma_database" / "materials").is_dir() and any(
+            (path / "oghma_database" / "materials").iterdir()
+        ):
             return path
     raise FileNotFoundError(
-        "未找到可用的材料库源目录（需含非空 materials/）。"
-        "请设置 SIMULATION_DATABASE_DIR 或传入 --database-source，"
-        "例如: --database-source ~/.oghma_local"
+        "未找到可用的材料库源目录（需含非空 oghma_database/materials/）。"
+        "请先 build_toykits 或设置 SIMULATION_DATABASE_DIR。"
     )
 
 
 def prepare_database_bundle(dest: Path, source: Path) -> None:
     dest.mkdir(parents=True, exist_ok=True)
-    copied: list[str] = []
-    for name in OGHMA_DB_SUBDIRS:
-        src_dir = source / name
-        if not src_dir.is_dir():
-            continue
-        dst_dir = dest / name
-        if dst_dir.exists():
-            shutil.rmtree(dst_dir)
-        shutil.copytree(src_dir, dst_dir, symlinks=False, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-        copied.append(name)
-    if "materials" not in copied:
-        raise FileNotFoundError(f"材料库源 {source} 缺少 materials/ 目录")
+    release_script = source / "database_release.py"
+    if not release_script.is_file():
+        raise FileNotFoundError(
+            f"材料库源 {source} 缺少 database_release.py；"
+            "请指定 simulation_core/assets/database 或先完成 export。"
+        )
+    run(
+        [
+            sys.executable,
+            str(release_script),
+            "--dest",
+            str(dest),
+            "--clean",
+        ],
+        cwd=source,
+    )
+    materials = dest / "oghma_database" / "materials"
+    if not materials.is_dir() or not any(materials.iterdir()):
+        raise FileNotFoundError(f"database_release 未产出 oghma_database/materials: {dest}")
     size_mb = sum(f.stat().st_size for f in dest.rglob("*") if f.is_file()) / (1024 * 1024)
-    print(f">>> 已打包材料库: {source} -> {dest} ({', '.join(copied)}, {size_mb:.1f} MiB)")
+    print(f">>> 已 release 材料库: {source} -> {dest} ({size_mb:.1f} MiB)")
 
 
 def verify_docker_image(image_tag: str) -> None:
@@ -378,13 +316,12 @@ def verify_docker_image(image_tag: str) -> None:
         "os.environ.setdefault('SIMULATION_ARTIFACTS_DIR', '/app/.simulation_core'); "
         "os.environ.setdefault('PYTHONPATH', '/app:/app/.simulation_core'); "
         "import simulation; "
-        "from simulation_database.database_ui import ensure_simulation_database_initialized; "
-        "db = ensure_simulation_database_initialized(); "
-        "names = list(db.database_names()); "
-        "assert names, 'no databases'; "
-        "mats = db.database('materials'); "
-        "assert mats.local_path(), 'materials path empty'; "
-        "print('verify ok:', db.root_path(), names)"
+        "from simulation_database_parser import get_simulation_database; "
+        "db = get_simulation_database(init=True); "
+        "q = db.query(); "
+        "assert q.keys, 'empty database tree'; "
+        "assert db.local_path(), 'database path empty'; "
+        "print('verify ok:', db.root_path(), list(q.keys)[:5])"
     )
     run(["docker", "run", "--rm", image_tag, "python", "-c", script])
 
@@ -651,3 +588,87 @@ def deploy_hf(*, hf_repo: str, dest_path: str, dry_run: bool) -> int:
 
     log(">>> Successfully pushed to Hugging Face Space")
     return 0
+
+
+def cmd_build(_args: argparse.Namespace) -> int:
+    return run_build_pipeline()
+
+
+def cmd_local(_args: argparse.Namespace) -> int:
+    code = run_build_pipeline()
+    if code != 0:
+        return code
+    return start_local_server()
+
+
+def cmd_docker(_args: argparse.Namespace) -> int:
+    root = repo_root()
+    simulation_root = simulation_core_root()
+
+    code = run_build_pipeline()
+    if code != 0:
+        return code
+
+    if not shutil.which("docker"):
+        print(
+            "错误: 未找到 docker 命令。请先安装 Docker 并确保在 PATH 中；",
+            "若使用 WSL 2，请在 Docker Desktop 设置中启用 WSL 集成。",
+            file=sys.stderr,
+        )
+        print("参见: https://docs.docker.com/go/wsl2/", file=sys.stderr)
+        return 1
+
+    db_dest = simulation_root / "assets" / "database"
+    prepare_database_bundle(db_dest, resolve_database_source())
+
+    image_tag = DEFAULT_DOCKER_IMAGE_TAG
+    print(f">>> 使用 Dockerfile 构建镜像: {image_tag}")
+    run(
+        [
+            "docker",
+            "build",
+            "-f",
+            str(root / "Dockerfile"),
+            "-t",
+            image_tag,
+            str(root),
+        ]
+    )
+
+    print(f">>> 验证镜像内材料库: {image_tag}")
+    verify_docker_image(image_tag)
+    print("======== 全部完成 ========")
+    return 0
+
+
+def cmd_hf(args: argparse.Namespace) -> int:
+    code = run_build_pipeline()
+    if code != 0:
+        return code
+    return deploy_hf(
+        hf_repo=DEFAULT_HF_REPO,
+        dest_path=HF_DEPLOY_DEST,
+        dry_run=args.dry_run,
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="simulation_toykits 编译与部署（默认仅 build/collect）",
+    )
+    parser.set_defaults(func=cmd_build)
+    sub = parser.add_subparsers(dest="command")
+
+    sub.add_parser("build", help="编译并 collect 到 .simulation_core/").set_defaults(func=cmd_build)
+    sub.add_parser("local", help="build + 启动 Streamlit（脚本设置运行 env）").set_defaults(func=cmd_local)
+    sub.add_parser("docker", help="build + 构建 Docker 镜像").set_defaults(func=cmd_docker)
+    hf_parser = sub.add_parser("hf", help="build + 推送到 Hugging Face Space")
+    hf_parser.add_argument("--dry-run", action="store_true", help="build 后仅预览 push，不 git push")
+    hf_parser.set_defaults(func=cmd_hf)
+
+    args = parser.parse_args()
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

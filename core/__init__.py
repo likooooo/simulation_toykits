@@ -1,6 +1,6 @@
 """计算逻辑层；beams / sturm_liouville 等按需懒加载（依赖 simulation.so）。"""
 
-from core.materials import get_nk_at_wavelength
+from common import get_nk_at_wavelength
 
 _LAZY_MODULES = {
     "compute_plane_wave": "core.beams",

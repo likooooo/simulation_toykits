@@ -1,6 +1,8 @@
-"""core.materials 测试用例"""
+"""common.get_nk_at_wavelength 测试用例"""
 
-from core.materials import get_nk_at_wavelength
+from unittest.mock import patch
+
+from common import get_nk_at_wavelength
 
 
 class _FakeMat:
@@ -13,15 +15,20 @@ class _FakeMat:
 
 
 class TestGetNkAtWavelength:
-    def test_vacuum(self):
-        nk = get_nk_at_wavelength({}, "Vacuum", 0.532)
+    @patch("common.get_workspace_materials")
+    def test_vacuum(self, mock_get_materials):
+        mock_get_materials.return_value = {}
+        nk = get_nk_at_wavelength("Vacuum", 0.532)
         assert nk == 1.0 + 0.0j
 
-    def test_unknown_material(self):
-        nk = get_nk_at_wavelength({}, "Unknown", 0.532)
+    @patch("common.get_workspace_materials")
+    def test_unknown_material(self, mock_get_materials):
+        mock_get_materials.return_value = {}
+        nk = get_nk_at_wavelength("Unknown", 0.532)
         assert nk == 1.0 + 0.0j
 
-    def test_from_database_material(self):
-        materials_db = {"SiO2": _FakeMat(1.46, 0.0)}
-        nk = get_nk_at_wavelength(materials_db, "SiO2", 0.5)
+    @patch("common.get_workspace_materials")
+    def test_from_database_material(self, mock_get_materials):
+        mock_get_materials.return_value = {"SiO2": _FakeMat(1.46, 0.0)}
+        nk = get_nk_at_wavelength("SiO2", 0.5)
         assert nk == 1.46 + 0.0j

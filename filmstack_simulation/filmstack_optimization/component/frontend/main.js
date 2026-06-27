@@ -34,6 +34,7 @@ function clamp(v, lo, hi) {
 function curveMaxFraction(metric) {
   const current = args.current[metric];
   const target = localTarget[metric] || args.target?.[metric];
+  const preOpt = args.preOptimizeCurrent?.[metric];
   let max = 0;
   if (current) {
     for (let i = 0; i < current.length; i++) {
@@ -45,12 +46,18 @@ function curveMaxFraction(metric) {
       max = Math.max(max, target[i]);
     }
   }
+  if (preOpt) {
+    for (let i = 0; i < preOpt.length; i++) {
+      max = Math.max(max, preOpt[i]);
+    }
+  }
   return max;
 }
 
 function curveMinFraction(metric) {
   const current = args.current[metric];
   const target = localTarget[metric] || args.target?.[metric];
+  const preOpt = args.preOptimizeCurrent?.[metric];
   let min = Infinity;
   if (current) {
     for (let i = 0; i < current.length; i++) {
@@ -62,17 +69,22 @@ function curveMinFraction(metric) {
       min = Math.min(min, target[i]);
     }
   }
+  if (preOpt) {
+    for (let i = 0; i < preOpt.length; i++) {
+      min = Math.min(min, preOpt[i]);
+    }
+  }
   return min === Infinity ? 0 : min;
 }
 
 function autoYMinPercent(metric) {
   const minFrac = curveMinFraction(metric);
-  return Math.max(0, minFrac * 100 * 0.8);
+  return Math.max(0, Math.floor(minFrac * 100));
 }
 
 function autoYMaxPercent(metric) {
   const maxFrac = curveMaxFraction(metric);
-  return Math.max(Math.min(maxFrac * 100 * 1.2, Y_PERCENT_CAP), Y_PERCENT_FLOOR);
+  return Math.max(Math.min(Math.ceil(maxFrac * 100), Y_PERCENT_CAP), Y_PERCENT_FLOOR);
 }
 
 function defaultDomain(wl, metric) {
@@ -82,12 +94,17 @@ function defaultDomain(wl, metric) {
   return { x: [x0, x1], y: [autoYMinPercent(metric), autoYMaxPercent(metric)], yAuto: true };
 }
 
-function isLegacyFractionDomain(dom) {
-  return dom && dom.y && dom.y[1] <= Y_FRACTION_CAP && dom.yAuto !== true;
+function resetDomain(wl) {
+  const xs = wl && wl.length ? wl : [0.4, 0.8];
+  return {
+    x: [Math.min(...xs), Math.max(...xs)],
+    y: [0, Y_PERCENT_CAP],
+    yAuto: false,
+  };
 }
 
 function normalizeDomain(dom, wl, metric) {
-  if (!dom || isLegacyFractionDomain(dom)) {
+  if (!dom) {
     return defaultDomain(wl, metric);
   }
   const out = { ...dom };
@@ -203,7 +220,7 @@ function formatTick(v, decimals) {
 
 function formatPercentTick(v) {
   const abs = Math.abs(v);
-  if (abs >= 100 || (abs < 0.01 && v !== 0)) {
+  if (abs < 0.01 && v !== 0) {
     return v.toExponential(2) + "%";
   }
   const decimals = abs >= 10 ? 0 : abs >= 1 ? 1 : 2;
@@ -218,6 +235,60 @@ function appendSvgText(svg, x, y, text, anchor, cls) {
   el.classList.add(cls || "axis-label");
   el.textContent = text;
   svg.appendChild(el);
+}
+
+let clipIdCounter = 0;
+
+function ensurePlotClipPath(svg, rect) {
+  const clipId = `plot-clip-${++clipIdCounter}`;
+  const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+  const clipPath = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
+  clipPath.setAttribute("id", clipId);
+  const clipRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  clipRect.setAttribute("x", rect.x0);
+  clipRect.setAttribute("y", rect.y0);
+  clipRect.setAttribute("width", rect.x1 - rect.x0);
+  clipRect.setAttribute("height", rect.y1 - rect.y0);
+  clipPath.appendChild(clipRect);
+  defs.appendChild(clipPath);
+  svg.appendChild(defs);
+  return clipId;
+}
+
+function drawPlotBackground(svg, domain, rect) {
+  for (let i = 0; i <= 4; i++) {
+    const y = domain.y[0] + (i / 4) * (domain.y[1] - domain.y[0]);
+    const py = yToPx(y, domain, rect);
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", rect.x0);
+    line.setAttribute("x2", rect.x1);
+    line.setAttribute("y1", py);
+    line.setAttribute("y2", py);
+    line.classList.add("grid-line");
+    svg.appendChild(line);
+  }
+
+  const axis = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  axis.setAttribute("x", rect.x0);
+  axis.setAttribute("y", rect.y0);
+  axis.setAttribute("width", rect.x1 - rect.x0);
+  axis.setAttribute("height", rect.y1 - rect.y0);
+  axis.setAttribute("fill", "transparent");
+  axis.setAttribute("stroke", "#D1D5DB");
+  axis.classList.add("axis-line");
+  svg.appendChild(axis);
+}
+
+function appendClippedPath(svg, d, opts, clipId) {
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", d);
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", opts.stroke);
+  path.setAttribute("stroke-width", String(opts.width));
+  if (opts.dash) path.setAttribute("stroke-dasharray", opts.dash);
+  if (opts.opacity != null) path.setAttribute("stroke-opacity", String(opts.opacity));
+  if (clipId) path.setAttribute("clip-path", `url(#${clipId})`);
+  svg.appendChild(path);
 }
 
 function drawAxes(svg, domain, rect) {
@@ -288,6 +359,10 @@ function sendValue(payload) {
   Streamlit.setComponentValue({ ...payload, ts: Date.now() });
 }
 
+function payloadWithView(payload) {
+  return { ...payload, viewDomain };
+}
+
 function updateFrameHeight() {
   const root = document.getElementById("root");
   const h = root ? root.offsetHeight + 8 : 340;
@@ -332,6 +407,10 @@ function drawMeritAxes(svg, domain, rect) {
   );
 }
 
+function emptyConvergenceDomain() {
+  return { x: [1, 10], y: [0, 1] };
+}
+
 function convergenceDomain(history) {
   const n = history.length;
   const xLo = 1;
@@ -352,33 +431,14 @@ function drawConvergenceSvg(svg) {
   svg.setAttribute("viewBox", `0 0 ${rect.w} ${rect.h}`);
 
   const history = args.meritHistory;
-  if (!history || !history.length) return;
+  const hasData = history && history.length > 0;
+  const domain = hasData ? convergenceDomain(history) : emptyConvergenceDomain();
+  const clipId = ensurePlotClipPath(svg, rect);
 
-  const domain = convergenceDomain(history);
-
-  for (let i = 0; i <= 4; i++) {
-    const y = domain.y[0] + (i / 4) * (domain.y[1] - domain.y[0]);
-    const py = yToPx(y, domain, rect);
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", rect.x0);
-    line.setAttribute("x2", rect.x1);
-    line.setAttribute("y1", py);
-    line.setAttribute("y2", py);
-    line.classList.add("grid-line");
-    svg.appendChild(line);
-  }
-
-  const axis = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-  axis.setAttribute("x", rect.x0);
-  axis.setAttribute("y", rect.y0);
-  axis.setAttribute("width", rect.x1 - rect.x0);
-  axis.setAttribute("height", rect.y1 - rect.y0);
-  axis.setAttribute("fill", "transparent");
-  axis.setAttribute("stroke", "#D1D5DB");
-  axis.classList.add("axis-line");
-  svg.appendChild(axis);
-
+  drawPlotBackground(svg, domain, rect);
   drawMeritAxes(svg, domain, rect);
+
+  if (!hasData) return;
 
   const pts = history.map((yVal, i) => ({
     px: xToPx(i + 1, domain, rect),
@@ -387,28 +447,13 @@ function drawConvergenceSvg(svg) {
 
   if (pts.length >= 2) {
     const d = pts.map((p, i) => `${i ? "L" : "M"} ${p.px} ${p.py}`).join(" ");
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", d);
-    path.setAttribute("fill", "none");
-    path.classList.add("curve-convergence");
-    path.setAttribute("stroke-width", "2.5");
-    svg.appendChild(path);
-  }
-
-  for (const p of pts) {
-    const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    dot.setAttribute("cx", p.px);
-    dot.setAttribute("cy", p.py);
-    dot.setAttribute("r", "2");
-    dot.classList.add("curve-convergence");
-    dot.setAttribute("fill", "#4682B4");
-    svg.appendChild(dot);
+    appendClippedPath(svg, d, { stroke: CURRENT_CURVE_COLOR, width: 2.5 }, clipId);
   }
 }
 
 function renderConvergenceChart() {
   const panel = document.createElement("div");
-  panel.className = "chart-panel convergence readonly";
+  panel.className = "chart-panel readonly";
 
   const header = document.createElement("div");
   header.className = "chart-header";
@@ -464,8 +509,7 @@ function renderChart(metric) {
     ev.stopPropagation();
     if (args.optimizing) return;
     activeMetric = metric;
-    sendValue({ type: "activeMetric", activeMetric: metric });
-    renderAll();
+    sendValue(payloadWithView({ type: "activeMetric", activeMetric: metric }));
   };
 
   const clearBtn = document.createElement("button");
@@ -479,25 +523,34 @@ function renderChart(metric) {
     if (args.optimizing) return;
     localTarget[metric] = null;
     localTouched[metric] = false;
-    sendValue({ type: "clearTarget", metric });
-    renderAll();
+    sendValue(payloadWithView({ type: "clearTarget", metric }));
+  };
+
+  const focusBtn = document.createElement("button");
+  focusBtn.type = "button";
+  focusBtn.className = "reset-btn";
+  focusBtn.textContent = "Focus";
+  focusBtn.onclick = (ev) => {
+    ev.stopPropagation();
+    if (args.optimizing) return;
+    viewDomain[metric] = defaultDomain(args.wl, metric);
+    sendValue({ type: "viewChange", viewDomain: viewDomain });
   };
 
   const resetBtn = document.createElement("button");
   resetBtn.type = "button";
   resetBtn.className = "reset-btn";
-  resetBtn.textContent = "重置视图";
+  resetBtn.textContent = "Reset";
   resetBtn.onclick = (ev) => {
     ev.stopPropagation();
     if (args.optimizing) return;
-    const dom = defaultDomain(args.wl, metric);
-    viewDomain[metric] = dom;
+    viewDomain[metric] = resetDomain(args.wl);
     sendValue({ type: "viewChange", viewDomain: viewDomain });
-    renderAll();
   };
 
   actions.appendChild(legend);
   actions.appendChild(clearBtn);
+  actions.appendChild(focusBtn);
   actions.appendChild(resetBtn);
   header.appendChild(title);
   header.appendChild(actions);
@@ -531,47 +584,28 @@ function drawSvg(metric, svg) {
   const wl = args.wl;
   const current = args.current[metric];
   const target = localTarget[metric];
+  const clipId = ensurePlotClipPath(svg, rect);
 
-  // grid
-  for (let i = 0; i <= 4; i++) {
-    const y = domain.y[0] + (i / 4) * (domain.y[1] - domain.y[0]);
-    const py = yToPx(y, domain, rect);
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", rect.x0);
-    line.setAttribute("x2", rect.x1);
-    line.setAttribute("y1", py);
-    line.setAttribute("y2", py);
-    line.classList.add("grid-line");
-    svg.appendChild(line);
-  }
-
-  const axis = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-  axis.setAttribute("x", rect.x0);
-  axis.setAttribute("y", rect.y0);
-  axis.setAttribute("width", rect.x1 - rect.x0);
-  axis.setAttribute("height", rect.y1 - rect.y0);
-  axis.setAttribute("fill", "transparent");
-  axis.setAttribute("stroke", "#D1D5DB");
-  axis.classList.add("axis-line");
-  svg.appendChild(axis);
-
+  drawPlotBackground(svg, domain, rect);
   drawAxes(svg, domain, rect);
 
   function pathFor(ys, opts) {
     const pts = curvePoints(wl, ys, domain, rect);
     if (!pts.length) return;
     const d = pts.map((p, i) => `${i ? "L" : "M"} ${p.px} ${p.py}`).join(" ");
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", d);
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke", opts.stroke);
-    path.setAttribute("stroke-width", String(opts.width));
-    if (opts.dash) path.setAttribute("stroke-dasharray", opts.dash);
-    if (opts.opacity != null) path.setAttribute("stroke-opacity", String(opts.opacity));
-    svg.appendChild(path);
+    appendClippedPath(svg, d, opts, clipId);
   }
 
   const editing = dragMode === "edit" && dragMetric === metric;
+  const preOpt = args.preOptimizeCurrent?.[metric];
+  if (!editing && preOpt) {
+    pathFor(preOpt, {
+      stroke: CURRENT_CURVE_COLOR,
+      width: 2.5,
+      dash: "4 3",
+      opacity: 0.45,
+    });
+  }
   pathFor(current, {
     stroke: CURRENT_CURVE_COLOR,
     width: editing ? 2.5 : 2.5,
@@ -595,13 +629,12 @@ function drawSvg(metric, svg) {
     }
     if (pts.length >= 2) {
       const d = pts.map((p, i) => `${i ? "L" : "M"} ${p.px} ${p.py}`).join(" ");
-      const strokePath = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      strokePath.setAttribute("d", d);
-      strokePath.setAttribute("fill", "none");
-      strokePath.setAttribute("stroke", "#2563EB");
-      strokePath.setAttribute("stroke-width", "2");
-      strokePath.setAttribute("stroke-dasharray", "6 4");
-      svg.appendChild(strokePath);
+      appendClippedPath(
+        svg,
+        d,
+        { stroke: "#2563EB", width: 2, dash: "6 4" },
+        clipId,
+      );
     }
   }
 
@@ -672,6 +705,7 @@ function onDocumentUp(ev) {
   const metric = dragMetric;
   const rect = plotRect(svg);
   const domain = viewDomain[metric];
+  let pendingServerRender = false;
 
   if (dragMode === "edit") {
     if (editSnapshot && dragLast) {
@@ -695,14 +729,16 @@ function onDocumentUp(ev) {
     if (editSnapshot && editSnapshot.modifiedIndices && editSnapshot.modifiedIndices.size) {
       editWlIndices[metric] = [...editSnapshot.modifiedIndices].sort((a, b) => a - b);
     }
-    sendValue({
-      type: "curveDragEnd",
-      metric,
-      target: { R: localTarget.R, T: localTarget.T, A: localTarget.A },
-      touched: { ...localTouched },
-      editWlIndices,
-      triggerOptimize: true,
-    });
+    sendValue(
+      payloadWithView({
+        type: "curveDragEnd",
+        metric,
+        target: { R: localTarget.R, T: localTarget.T, A: localTarget.A },
+        touched: { ...localTouched },
+        editWlIndices,
+        triggerOptimize: true,
+      }),
+    );
     setStatus("已提交目标曲线，等待优化…", false);
   } else if (dragMode === "zoom" && dragStart && dragLast) {
     const dx = Math.abs(dragLast.px - dragStart.px);
@@ -721,6 +757,7 @@ function onDocumentUp(ev) {
         yAuto: false,
       };
       sendValue({ type: "viewChange", viewDomain });
+      pendingServerRender = true;
     }
   }
 
@@ -730,7 +767,9 @@ function onDocumentUp(ev) {
   dragLast = null;
   editSnapshot = null;
   clearDocumentDragListeners();
-  renderAll();
+  if (!pendingServerRender) {
+    renderAll();
+  }
   ev.preventDefault();
 }
 
@@ -786,16 +825,13 @@ function bindSvgEvents(metric, svg) {
     if (dist <= HIT_PX) return;
     viewDomain[metric] = defaultDomain(args.wl, metric);
     sendValue({ type: "viewChange", viewDomain });
-    renderAll();
   });
 }
 
 function renderAll() {
   elCharts.innerHTML = "";
   for (const m of METRICS) renderChart(m);
-  if (args.meritHistory && args.meritHistory.length > 0) {
-    renderConvergenceChart();
-  }
+  renderConvergenceChart();
   requestAnimationFrame(updateFrameHeight);
 }
 

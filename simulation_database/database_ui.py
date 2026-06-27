@@ -5,50 +5,17 @@ from __future__ import annotations
 import re
 import tempfile
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Literal
 
 import numpy as np
 
-DEFAULT_SPECTRUM_PATH = ["AM1.5G"]
+import simulation  # noqa: F401 — must load before simulation_database_parser
+import simulation_database_parser as sdp
 
 __all__ = [
-    "ensure_simulation_database_initialized",
-    "prepare_simulation_database",
     "material_nk_arrays",
     "search_material_paths",
 ]
-
-
-def ensure_simulation_database_initialized(sim_db=None):
-    if sim_db is not None:
-        sim_db.init()
-        return sim_db
-    import simulation_database_parser as sdp
-
-    return sdp.get_simulation_database(init=True)
-
-
-def prepare_simulation_database(
-    sim_db=None,
-    db_name: str = "materials",
-) -> tuple[Any, list[str]]:
-    """Ensure database is installed via simulation_database_parser.get_simulation_database."""
-    lines: list[str] = []
-    try:
-        sim_db = ensure_simulation_database_initialized(sim_db)
-        lines.append(f"database root: {sim_db.root_path()}")
-    except Exception as exc:
-        lines.append(f"prepare failed: {exc}")
-        return sim_db, lines
-
-    if db_name not in list(sim_db.database_names()):
-        lines.append(f"[{db_name}] unknown database")
-        return sim_db, lines
-
-    oghma = sim_db.database(db_name)
-    lines.append(f"[{db_name}] local path: {oghma.local_path()}")
-    lines.append(f"[{db_name}] ready")
-    return sim_db, lines
 
 
 def object_catalog_name(obj: Any) -> str:
@@ -74,20 +41,23 @@ def _wl_range_from_array(wl: np.ndarray) -> tuple[float, float] | None:
     return float(np.min(wl)), float(np.max(wl))
 
 
-def material_wl_range_um(mat: Any) -> tuple[float, float] | None:
+def _entry_wl_range_um(kind: Literal["material", "spectrum"], obj: Any) -> tuple[float, float] | None:
     try:
-        wl, _, _ = material_nk_arrays(mat)
+        if kind == "material":
+            wl, _, _ = material_nk_arrays(obj)
+        else:
+            wl, _ = spectrum_arrays(obj)
     except Exception:
         return None
     return _wl_range_from_array(wl)
+
+
+def material_wl_range_um(mat: Any) -> tuple[float, float] | None:
+    return _entry_wl_range_um("material", mat)
 
 
 def spectrum_wl_range_um(spec: Any) -> tuple[float, float] | None:
-    try:
-        wl, _ = spectrum_arrays(spec)
-    except Exception:
-        return None
-    return _wl_range_from_array(wl)
+    return _entry_wl_range_um("spectrum", spec)
 
 
 def intersect_wl_ranges(ranges: list[tuple[float, float] | None]) -> tuple[float, float] | None:
@@ -126,129 +96,99 @@ def _iter_query_nodes(
 def _iter_matching_leaf_paths(
     sim_db: Any,
     query: str,
-    db_names: tuple[str, ...],
     *,
     max_results: int | None = None,
-    match_blob: Callable[[str, list[str]], str] | None = None,
-) -> list[tuple[str, list[str]]]:
+    match_blob: Callable[[list[str]], str] | None = None,
+    path_filter: Callable[[list[str]], bool] | None = None,
+) -> list[list[str]]:
     key = (query or "").strip()
     if not key:
         return []
     pattern = re.compile(re.escape(key), re.IGNORECASE)
-    matches: list[tuple[str, list[str]]] = []
+    matches: list[list[str]] = []
 
-    for db_name in db_names:
-        if db_name not in sim_db.database_names():
+    for _node, path_keys, is_leaf in _iter_query_nodes(sim_db.query(), []):
+        if max_results is not None and len(matches) >= max_results:
+            break
+        if not is_leaf:
             continue
-        oghma = sim_db.database(db_name)
-
-        for _node, path_keys, is_leaf in _iter_query_nodes(oghma.query(), []):
-            if max_results is not None and len(matches) >= max_results:
-                break
-            if not is_leaf:
-                continue
-            if match_blob is not None:
-                blob = match_blob(db_name, path_keys)
-            else:
-                blob = breadcrumb_for(db_name, path_keys)
-            if pattern.search(blob) or pattern.search(path_keys[-1] if path_keys else ""):
-                matches.append((db_name, list(path_keys)))
+        if path_filter is not None and not path_filter(path_keys):
+            continue
+        if match_blob is not None:
+            blob = match_blob(path_keys)
+        else:
+            blob = breadcrumb_for(path_keys)
+        if pattern.search(blob) or pattern.search(path_keys[-1] if path_keys else ""):
+            matches.append(list(path_keys))
     return matches
 
 
-def search_material_paths(sim_db: Any, material_name: str, db_name: str = "materials") -> list[list[str]]:
-    def _blob(_db: str, path_keys: list[str]) -> str:
-        return " > ".join(path_keys)
+def search_material_paths(sim_db: Any, material_name: str) -> list[list[str]]:
+    """Search material leaves; ``materials`` in path_keys is a navigation scope filter, not YAML leaf typing."""
 
-    return [
-        path_keys
-        for _db, path_keys in _iter_matching_leaf_paths(
-            sim_db, material_name, (db_name,), match_blob=_blob
-        )
-    ]
+    def _is_material_path(path_keys: list[str]) -> bool:
+        return "materials" in path_keys
 
-
-VISIBLE_DATABASE_NAMES = ("materials", "spectra")
-
-
-def path_id(db_name: str, path_keys: list[str]) -> str:
-    if not path_keys:
-        return db_name
-    return f"{db_name}:{'/'.join(path_keys)}"
+    return _iter_matching_leaf_paths(
+        sim_db,
+        material_name,
+        match_blob=breadcrumb_for,
+        path_filter=_is_material_path,
+    )
 
 
-def browser_node_path(db_name: str, path_keys: list[str]) -> str:
-    if path_keys:
-        return f"{db_name}/{'/'.join(path_keys)}"
-    return db_name
+def path_id(path_keys: list[str]) -> str:
+    return "/".join(path_keys)
 
 
-def breadcrumb_for(db_name: str, path_keys: list[str]) -> str:
-    return " > ".join([db_name, *path_keys])
+def breadcrumb_for(path_keys: list[str]) -> str:
+    return " > ".join(path_keys)
 
 
-_DATA_KIND_SEGMENTS = frozenset({"nk", "n", "k", "n2"})
+def leaf_type_for_path(
+    sim_db: Any,
+    path_keys: list[str],
+    *,
+    kind_cache: dict[str, str] | None = None,
+) -> str | None:
+    """Classify a yml leaf from on-disk YAML (no C++ material/spectrum object load)."""
+    cache = kind_cache if kind_cache is not None else {}
+    pid = path_id(path_keys)
+    if pid in cache:
+        return cache[pid]
+    try:
+        leaf = sim_db.walk_query_path(path_keys)
+        kind = sdp.infer_yml_leaf_kind(leaf.storage_path())
+    except Exception:
+        return None
+    if kind not in ("material", "spectrum"):
+        return None
+    cache[pid] = kind
+    return kind
 
 
-def material_unique_name_from_path(path_keys: list[str]) -> str:
-    """Mirror oghma_database.cpp material_names_from_path (unique name only)."""
-    if not path_keys:
-        return "leaf"
-    last = path_keys[-1]
-    lower = last.lower()
-    if lower.endswith(".yml") or lower.endswith(".yaml"):
-        page = Path(last).stem
-        for i, seg in enumerate(path_keys[:-1]):
-            if seg in _DATA_KIND_SEGMENTS and i > 0:
-                book = path_keys[i - 1]
-                return f"{book}({page})"
-        return page
-    return last
-
-
-def leaf_display_label(db_name: str, path_keys: list[str]) -> str:
-    if db_name == "spectra":
-        return path_keys[-1] if path_keys else db_name
-    return material_unique_name_from_path(path_keys)
-
-
-def leaf_type_for_db(db_name: str) -> str:
-    return "spectrum" if db_name == "spectra" else "material"
-
-
-def read_leaf_object(oghma: Any, leaf_query: Any) -> Any:
-    obj = oghma.read(leaf_query)
-    if obj is None:
-        raise ValueError("read requires a leaf query_object")
-    return obj
-
-
-def query_at_path(oghma: Any, path_keys: list[str]) -> Any:
-    query = oghma.query()
-    for key in path_keys:
-        if query.is_leaf:
-            raise ValueError(f"unexpected leaf before key: {key}")
-        keys = list(query.keys)
-        if key not in keys:
-            raise ValueError(f"key not found: {key}")
-        _, query = query.descend(key)
-    return query
+def infer_leaf_kind(obj: Any) -> Literal["material", "spectrum"]:
+    if obj.is_material():
+        return "material"
+    if obj.is_spectrum():
+        return "spectrum"
+    raise ValueError("object is neither material nor spectrum")
 
 
 def get_tree_children(
     sim_db: Any,
-    db_name: str,
     path_keys: list[str],
     cache: dict[str, list[dict[str, Any]]],
+    *,
+    kind_cache: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    pid = path_id(db_name, path_keys)
+    pid = path_id(path_keys)
     if pid in cache:
         return cache[pid]
-    oghma = sim_db.database(db_name)
     if not path_keys:
-        query = oghma.query()
+        query = sim_db.query()
     else:
-        query = query_at_path(oghma, path_keys)
+        query = sim_db.walk_query_path(path_keys, require_leaf=False)
     children: list[dict[str, Any]] = []
     for key in query.keys:
         try:
@@ -259,11 +199,12 @@ def get_tree_children(
         children.append(
             {
                 "key": key,
-                "path_id": path_id(db_name, child_path),
-                "db_name": db_name,
+                "path_id": path_id(child_path),
                 "path_keys": child_path,
                 "is_leaf": is_leaf,
-                "leaf_type": leaf_type_for_db(db_name) if is_leaf else None,
+                "leaf_type": leaf_type_for_path(sim_db, child_path, kind_cache=kind_cache)
+                if is_leaf
+                else None,
                 "child_count": len(child.keys) if not is_leaf else 0,
             }
         )
@@ -276,42 +217,25 @@ def build_tree_nodes_for_panel(
     expanded_paths: set[str],
     children_cache: dict[str, list[dict[str, Any]]],
 ) -> list[dict[str, Any]]:
-    nodes: list[dict[str, Any]] = []
-    for db_name in VISIBLE_DATABASE_NAMES:
-        if db_name not in sim_db.database_names():
-            continue
-        root_id = path_id(db_name, [])
-        root_node: dict[str, Any] = {
-            "key": db_name,
-            "path_id": root_id,
-            "db_name": db_name,
-            "path_keys": [],
-            "is_leaf": False,
-            "leaf_type": None,
-            "child_count": len(get_tree_children(sim_db, db_name, [], children_cache)),
-            "children": [],
-        }
-        if root_id in expanded_paths:
-            root_node["children"] = _build_subtree(sim_db, db_name, [], expanded_paths, children_cache)
-        nodes.append(root_node)
-    return nodes
+    kind_cache: dict[str, str] = {}
+    return _build_subtree(sim_db, [], expanded_paths, children_cache, kind_cache)
 
 
 def _build_subtree(
     sim_db: Any,
-    db_name: str,
     path_keys: list[str],
     expanded_paths: set[str],
     children_cache: dict[str, list[dict[str, Any]]],
+    kind_cache: dict[str, str],
 ) -> list[dict[str, Any]]:
-    children_meta = get_tree_children(sim_db, db_name, path_keys, children_cache)
+    children_meta = get_tree_children(sim_db, path_keys, children_cache, kind_cache=kind_cache)
     result: list[dict[str, Any]] = []
     for meta in children_meta:
         node = dict(meta)
         node["children"] = []
         if not meta["is_leaf"] and meta["path_id"] in expanded_paths:
             node["children"] = _build_subtree(
-                sim_db, db_name, meta["path_keys"], expanded_paths, children_cache
+                sim_db, meta["path_keys"], expanded_paths, children_cache, kind_cache
             )
         result.append(node)
     return result
@@ -319,16 +243,21 @@ def _build_subtree(
 
 def search_db_paths(sim_db: Any, query: str, max_results: int = 80) -> list[dict[str, Any]]:
     matches: list[dict[str, Any]] = []
-    for db_name, path_keys in _iter_matching_leaf_paths(
-        sim_db, query, VISIBLE_DATABASE_NAMES, max_results=max_results
-    ):
+    kind_cache: dict[str, str] = {}
+    for path_keys in _iter_matching_leaf_paths(sim_db, query, max_results=max_results):
+        leaf_type = leaf_type_for_path(sim_db, path_keys, kind_cache=kind_cache)
+        if leaf_type is None:
+            continue
+        if leaf_type == "spectrum":
+            label = path_keys[-1] if path_keys else "spectrum"
+        else:
+            label = simulation.material_unique_name_from_path_keys(path_keys)
         matches.append(
             {
-                "db_name": db_name,
                 "path_keys": path_keys,
-                "leaf_type": leaf_type_for_db(db_name),
-                "label": leaf_display_label(db_name, path_keys),
-                "path_id": path_id(db_name, path_keys),
+                "leaf_type": leaf_type,
+                "label": label,
+                "path_id": path_id(path_keys),
             }
         )
     return matches
@@ -349,9 +278,3 @@ def dump_object_as_csv(obj: Any) -> tuple[bytes, str]:
         safe = re.sub(r"[^\w.\-]+", "_", object_unique_name(obj)).strip("_") or "export"
         filename = f"{safe}.csv"
         return csv_path.read_bytes(), filename
-
-
-def read_leaf_at_path(sim_db: Any, db_name: str, path_keys: list[str]) -> Any:
-    oghma = sim_db.database(db_name)
-    leaf = oghma.walk_query_path(path_keys)
-    return read_leaf_object(oghma, leaf)

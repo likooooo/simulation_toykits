@@ -34,10 +34,10 @@ chmod +x pull_model.sh
 
 **3. 运行智能体**
 
-在**仓库根目录**执行：
+在**仓库根目录**执行（自然语言中的 532nm 对应工具 `wl_um`（微米）：532 nm = 0.532 μm）：
 
 ```bash
-python -m agent.fresnel_caculator.run_agent "请计算 Vacuum 0 SiO2 0.1 Vacuum 0 在 532nm、0 度下的 R 和 T"
+python -m agent.fresnel_caculator.run_agent "请计算 air 0 SiO2 0.1 air 0 在 532nm、0 度下的 R 和 T"
 ```
 
 智能体默认连接 `http://localhost:11434`，无需额外配置。

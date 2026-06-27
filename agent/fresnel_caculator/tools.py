@@ -1,7 +1,7 @@
 """Fresnel 专家智能体工具层：封装 filmstack_simulation 与 simulation_database。"""
 
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -15,41 +15,67 @@ def _filmstack_plugin():
     return filmstack_visualizer
 
 
-def _material_nk_arrays(mat) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    from simulation_database.database_ui import material_nk_arrays
-    return material_nk_arrays(mat)
+def _coerce_path_keys(path_keys: Union[List[str], str, None]) -> List[str]:
+    if path_keys is None:
+        return []
+    if isinstance(path_keys, list):
+        return [str(p).strip() for p in path_keys if str(p).strip()]
+    text = str(path_keys).strip()
+    if not text:
+        return []
+    if " > " in text:
+        return [p.strip() for p in text.split(" > ") if p.strip()]
+    return [text]
+
+
+def _is_air_path(path_keys: List[str]) -> bool:
+    return len(path_keys) == 1 and path_keys[0].lower() == "air"
+
+
+def _air_nk_payload() -> Dict[str, Any]:
+    return {
+        "material": "air",
+        "wavelength_um": [0.0, 1.0],
+        "n": [1.0, 1.0],
+        "k": [0.0, 0.0],
+    }
 
 
 def list_material_index(
     material_name: str,
 ) -> Dict[str, Any]:
-    """在 simulation_database materials 树中搜索材料名，返回匹配路径。"""
+    """在 simulation_database materials 树中搜索材料名，返回匹配 query path。"""
     key = (material_name or "").strip()
     if not key:
         return {"error": "material_name 不能为空"}
 
-    from simulation_database.database_ui import ensure_simulation_database_initialized, search_material_paths
+    import simulation_database_parser as sdp
 
-    sim_db = ensure_simulation_database_initialized()
-    paths = search_material_paths(sim_db, key, db_name="materials")
+    from simulation_database.database_ui import breadcrumb_for, search_material_paths
+
+    sim_db = sdp.get_simulation_database(init=True)
+    paths = search_material_paths(sim_db, key)
     if not paths:
-        return {
-            "shelf_id": "materials",
-            "books": [],
-            "message": f"未找到材料: {material_name}",
-        }
-    books = [{"page_id": " > ".join(p), "path": p} for p in paths[:20]]
-    return {"shelf_id": "materials", "books": books}
+        return {"matches": [], "message": f"未找到材料: {material_name}"}
+    return {
+        "matches": [
+            {"path_keys": p, "label": breadcrumb_for(p)}
+            for p in paths[:20]
+        ]
+    }
 
 
 def get_material_nk(
-    shelf_id: str,
-    book_id: str,
-    page_id: str,
+    path_keys: Union[List[str], str],
     ratio: float = 1,
     materials_db: Optional[Dict[str, Any]] = None,
+    material_token: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """获取指定材料的 n/k 数据。优先 materials_db[book_id]，否则按 path 从数据库读取。"""
+    """获取指定材料的 n/k 数据。path_keys 为 release 树完整路径；air 可用 [\"air\"]。"""
+    keys = _coerce_path_keys(path_keys)
+    if not keys:
+        return {"error": "path_keys 不能为空"}
+
     try:
         ratio = float(ratio) if ratio is not None else 1.0
     except (TypeError, ValueError):
@@ -57,55 +83,51 @@ def get_material_nk(
     if not (0 < ratio <= 1):
         return {"error": "ratio 取值范围为 0 < ratio <= 1"}
 
-    if book_id == "Vacuum" or str(book_id).strip() == "Vacuum":
-        return {"wavelength_um": [0.0, 1.0], "n": [1.0, 1.0], "k": [0.0, 0.0], "material": "Vacuum"}
+    if _is_air_path(keys):
+        return _air_nk_payload()
+
+    from simulation_database.database_ui import material_nk_arrays
 
     mat = None
-    if materials_db and book_id in materials_db:
-        mat = materials_db[book_id]
+    token = material_token or keys[-1].removesuffix(".yml").removesuffix(".yaml")
+    if materials_db and token in materials_db:
+        mat = materials_db[token]
     else:
-        from simulation_database.database_ui import (
-            ensure_simulation_database_initialized,
-            read_leaf_at_path,
-        )
-        sim_db = ensure_simulation_database_initialized()
-        path_keys = page_id.split(" > ") if " > " in (page_id or "") else [book_id]
-        if page_id and page_id.startswith("[") is False and " > " in page_id:
-            path_keys = [p.strip() for p in page_id.split(" > ")]
-        elif materials_db is None:
-            path_keys = [book_id] if not page_id or page_id == book_id else [book_id, page_id]
+        import simulation_database_parser as sdp
+
         try:
-            mat = read_leaf_at_path(sim_db, shelf_id or "materials", path_keys)
+            mat = sdp.read_at_query_path(sdp.get_simulation_database(init=True), keys)
         except Exception:
             mat = None
 
     if mat is None:
-        return {"error": f"未找到材料: {book_id}", "shelf_id": shelf_id, "book_id": book_id, "page_id": page_id}
+        return {"error": f"未找到材料: {' > '.join(keys)}", "path_keys": keys}
 
     try:
-        wl, n, k = _material_nk_arrays(mat)
+        wl, n, k = material_nk_arrays(mat)
         wl = np.asarray(wl)
         n = np.asarray(n)
         k = np.asarray(k)
         if len(wl) == 0:
-            return {"material": book_id, "wavelength_um": [], "n": [], "k": []}
+            return {"material": token, "path_keys": keys, "wavelength_um": [], "n": [], "k": []}
         if ratio < 1.0:
             n_keep = max(1, int(round(len(wl) * ratio)))
             indices = np.linspace(0, len(wl) - 1, n_keep, dtype=int)
             wl, n, k = wl[indices], n[indices], k[indices]
         return {
-            "material": getattr(mat, "name", book_id),
+            "material": getattr(mat, "name", token),
+            "path_keys": keys,
             "wavelength_um": wl.tolist(),
             "n": n.tolist(),
             "k": k.tolist(),
         }
     except Exception as e:
-        return {"error": str(e), "shelf_id": shelf_id, "book_id": book_id, "page_id": page_id}
+        return {"error": str(e), "path_keys": keys}
 
 
-def export_nk_to_csv(shelf_id: str, book_id: str, page_id: str, out_path: str) -> Dict[str, Any]:
+def export_nk_to_csv(path_keys: Union[List[str], str], out_path: str) -> Dict[str, Any]:
     """将材料 nk 导出为 CSV 文件。"""
-    data = get_material_nk(shelf_id, book_id, page_id)
+    data = get_material_nk(path_keys)
     if "error" in data:
         return data
     df = pd.DataFrame({

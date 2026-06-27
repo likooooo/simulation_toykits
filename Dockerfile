@@ -1,9 +1,9 @@
 # 本地构建：直接使用当前目录代码，无需从 GitHub 拉取
 # 用法：在仓库根目录执行
 #   docker build -t simulation-toykits:v1 .
-# 或：python scripts/deploy.py docker
+# 或：python scripts/build_toykits.py docker
 # 构建前请确保：git submodule update --init --recursive simulation_core
-# 若 .simulation_core/ 无 simulation.so，请先执行 deploy.py 或 collect
+# 若 .simulation_core/ 无 simulation.so，请先执行 build_toykits
 
 # -----------------------------------------------------------------------------
 # 阶段 1：安装 Python 依赖

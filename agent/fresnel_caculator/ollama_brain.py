@@ -12,30 +12,32 @@ from typing import Any, Dict, List, Optional
 TOOL_SCHEMAS = [
     {
         "name": "list_material_index",
-        "description": "按材料名在索引中查询，返回 shelf_id、一组 page_id。",
+        "description": "按材料名搜索 release 树，返回匹配的 path_keys 列表。",
         "arguments": {
-            "material_name": "材料名称，必填，如 SiO2、TiO2，区分大小写查询",
+            "material_name": "材料名称，必填，如 SiO2、TiO2",
         },
     },
     {
         "name": "get_material_nk",
-        "description": "获取指定材料的 n/k 数据（波长、折射率、消光系数）。可选 ratio 控制采样精度。",
+        "description": "获取指定材料的 n/k 数据（波长、折射率、消光系数）。path_keys 为 list_material_index 返回的完整路径。",
         "arguments": {
-            "shelf_id": "Shelf ID",
-            "book_id": "Book ID（材料名）",
-            "page_id": "Page ID",
+            "path_keys": "release 树 query path，字符串用 ' > ' 分隔各段，或 JSON 数组；air 用 [\"air\"]",
             "ratio": "可选，采样精度 0 < ratio <= 1，小模型推荐0.1",
+            "material_token": "可选，materials_db 字典键名",
         },
     },
     {
         "name": "export_nk_to_csv",
         "description": "将材料 nk 数据导出为 CSV 文件。",
-        "arguments": {"shelf_id": "Shelf ID", "book_id": "Book ID", "page_id": "Page ID", "out_path": "输出文件路径"},
+        "arguments": {
+            "path_keys": "release 树 query path（同 get_material_nk）",
+            "out_path": "输出文件路径",
+        },
     },
     {
         "name": "parse_film_formula",
         "description": "解析多层膜公式，得到层列表。支持 (Material thickness)^N 和 Material thickness [n k]。",
-        "arguments": {"formula": "公式字符串，如 Vacuum 0 (SiO2 0.1 Ta2O5 0.05)^10 Vacuum 0"},
+        "arguments": {"formula": "公式字符串，如 air 0 (SiO2 0.1 Ta2O5 0.05)^10 air 0"},
     },
     {
         "name": "compute_filmstack",
@@ -44,7 +46,7 @@ TOOL_SCHEMAS = [
             "formula": "膜系公式",
             "angle_deg": "入射角（度）",
             "wl_um": "波长（微米）",
-            "materials_db": "可选，材料名到 {Shelf ID, Book ID, Page ID} 的映射，用于从数据库取 nk",
+            "materials_db": "可选，材料 token → material 对象映射，用于 formula 中引用数据库材料",
             "out_figure_path": "可选，膜系图保存路径",
         },
     },
@@ -64,7 +66,7 @@ TOOL_SCHEMAS = [
         "arguments": {
             "formula": "膜系公式",
             "wl_um": "波长（微米）",
-            "materials_db": "可选，材料名到 {Shelf ID, Book ID, Page ID} 的映射",
+            "materials_db": "可选，材料 token → material 对象映射",
             "out_figure_path": "可选，曲线图保存路径（与 out_figure_rt_path 二选一）",
             "out_figure_rt_path": "可选，曲线图保存路径（同上）",
         },
@@ -93,9 +95,9 @@ TOOL_SCHEMAS = [
 SYSTEM_PROMPT = """你是由 Simulation-toykits 部署的多层光学薄膜专家系统。你可以使用以下工具完成用户请求。
 
 可用工具（每次只能调用一个）：
-- list_material_index: 列出材料索引，查 shelf/book/page
-- get_material_nk: 获取某材料的 n/k 数据
-- export_nk_to_csv: 将材料 nk 导出为 CSV
+- list_material_index: 搜索材料，返回 path_keys
+- get_material_nk: 按 path_keys 获取 n/k（air 用 ["air"]）
+- export_nk_to_csv: 按 path_keys 导出 nk CSV
 - parse_film_formula: 解析膜系公式得到层列表
 - compute_filmstack: 单组膜系在单波长单角度下计算 R/T，可保存膜系图
 - compute_filmstack_batch: 批量计算多组膜系的 R/T，用于设计时比较
@@ -110,20 +112,20 @@ SYSTEM_PROMPT = """你是由 Simulation-toykits 部署的多层光学薄膜专�
 回复规则：
 1. 每次回复可先写思考过程（以「思考：」开头），再输出 JSON。
 2. 若需要调用工具：输出一个 JSON，包含 "tool" 和 "arguments"。例如：
-   思考：用户要导出 SiO2 数据，需先查材料索引得到 shelf/book/page，再调用 export_nk_to_csv。
-   {"tool": "export_nk_to_csv", "arguments": {"shelf_id": "...", "book_id": "SiO2", "page_id": "...", "out_path": "/path/to/out.csv"}}
+   思考：用户要导出 SiO2 数据，需先 list_material_index 得到 path_keys，再 export_nk_to_csv。
+   {"tool": "export_nk_to_csv", "arguments": {"path_keys": "oghma_database > materials > oxides > SiO2 > nk > Malitson.yml", "out_path": "/path/to/out.csv"}}
 3. 若不再需要调用工具、要直接回答用户：输出包含 "answer" 或 "text" 的 JSON。**只有在工具已返回成功后再声称文件已导出。** 例如：
    {"answer": "TiO2 的数据已成功为您导出至 2.csv。"}
 
 Few-shot 示例（请模仿）：
 User: 导出 TiO2 的数据到 2.csv
-Assistant: {"tool": "export_nk_to_csv", "arguments": {"shelf_id": "main", "book_id": "TiO2", "page_id": "Malitson", "out_path": "2.csv"}}
+Assistant: {"tool": "export_nk_to_csv", "arguments": {"path_keys": "refractive_index_info_database > materials > refractive_index_info > main > TiO2 > nk > Malitson.yml", "out_path": "2.csv"}}
 User: 工具执行结果：{"success": true, "path": "/abs/2.csv", "rows": 100}
 Assistant: {"answer": "TiO2 的数据已成功为您导出至 2.csv。"}
 
 4. 设计多层膜时：先 list_material_index / get_material_nk 了解材料，再 compute_filmstack_batch 得到 R/T，根据指标挑选结果，最后用 save_results_csv 或 export 类工具输出文件。
 5. **迭代设计**（用户要求「迭代设计」或「逐轮优化」时）：(a) 生成初始膜系公式；(b) 调用分析工具（compute_filmstack / compute_wavelength_vs_rt / compute_angle_vs_rt）；(c) 根据结果与指标判断是否满足，若不满足则生成新公式回到 (b)；满足则 answer 总结并用工具输出。
-6. 波长单位均为微米(μm)，角度为度(deg)。材料名与材料库 Book ID 一致（如 SiO2, TiO2）。Vacuum 表示空气/真空，厚度写 0。
+6. 波长单位均为微米(μm)，角度为度(deg)。formula 中材料 token 与 materials_db 键名一致（如 SiO2, TiO2, air）。入射/出射介质用 air，厚度写 0。数据库材料须先用 list_material_index 获取 path_keys。
 """
 
 

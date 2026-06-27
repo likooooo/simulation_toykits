@@ -1,8 +1,9 @@
 {
   "n_wl": 100,
-  "freehand_cost_scope": "full",
+  "freehand_cost_scope": "zoom",
   "initial_preset_id": "custom",
   "initial_formula": "air 0 MgF2 0.15154 TiO2 0.00815 MgF2 0.05059 TiO2 0.01118 MgF2 0.03130 TiO2 0.00720 MgF2 0.09352 N-BK7 0",
+  "default_thickness_range_pct": 30,
   "polarization": "UNPOLARIZED",
   "#thickness_min": 0.0,
   "#thickness_max": 10.0,
@@ -19,7 +20,7 @@
       "disp": false
     }
   },
-  "#multi_start": {
+  "DISABLE_TAG_multi_start": {
     "n_starts": 1,
     "seed": 7,
     "include_formula_x0": true

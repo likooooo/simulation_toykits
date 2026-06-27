@@ -7,20 +7,20 @@ import pytest
 from agent.fresnel_caculator.tools import run_tool, TOOLS
 
 
-# 不依赖材料库的膜系公式（内联 n,k，仅需 Vacuum + 一层介质）
-_FORMULA_INLINE_NK = "Vacuum 0 1.0 0 Layer 0.1 1.5 0 Vacuum 0 1.0 0"
+# 不依赖材料库的膜系公式（内联 n,k，仅需 air + 一层介质）
+_FORMULA_INLINE_NK = "air 0 1.0 0 Layer 0.1 1.5 0 air 0 1.0 0"
 
 
 class TestListMaterialIndex:
-    """list_material_index：必填 material_name，返回 shelf_id、books（仅含 page_id）。"""
+    """list_material_index：必填 material_name，返回 matches（含 path_keys）。"""
 
     def test_call_with_material_name(self):
         out = run_tool("list_material_index", {"material_name": "SiO2"})
         assert isinstance(out, dict)
-        assert "shelf_id" in out and "books" in out
-        for b in out.get("books", []):
-            assert "page_id" in b
-            assert "book_id" not in b
+        assert "matches" in out
+        for match in out.get("matches", []):
+            assert "path_keys" in match
+            assert "label" in match
 
     def test_call_material_name_empty_returns_error(self):
         out = run_tool("list_material_index", {"material_name": ""})
@@ -30,44 +30,41 @@ class TestListMaterialIndex:
 
 
 class TestGetMaterialNk:
-    """get_material_nk：获取材料 n/k。Vacuum 不依赖库。"""
+    """get_material_nk：获取材料 n/k。air 不依赖库。"""
 
-    def test_call_vacuum(self):
-        out = run_tool("get_material_nk", {
-            "shelf_id": "main",
-            "book_id": "Vacuum",
-            "page_id": "any",
-        })
+    def test_call_air(self):
+        out = run_tool("get_material_nk", {"path_keys": ["air"]})
         assert isinstance(out, dict)
-        assert out.get("material") == "Vacuum"
+        assert out.get("material") == "air"
         assert "wavelength_um" in out and "n" in out and "k" in out
 
     def test_call_material_may_fail_without_db(self):
         out = run_tool("get_material_nk", {
-            "shelf_id": "main",
-            "book_id": "SiO2",
-            "page_id": "Malitson",
+            "path_keys": [
+                "refractive_index_info_database",
+                "materials",
+                "refractive_index_info",
+                "main",
+                "SiO2",
+                "nk",
+                "Malitson.yml",
+            ],
         })
         assert isinstance(out, dict)
         assert "material" in out or "error" in out
 
     def test_call_with_ratio_returns_downsampled(self):
         out = run_tool("get_material_nk", {
-            "shelf_id": "main",
-            "book_id": "Vacuum",
-            "page_id": "any",
+            "path_keys": ["air"],
             "ratio": 0.5,
         })
         assert isinstance(out, dict)
-        assert out.get("material") == "Vacuum"
-        # Vacuum 只有 2 个点，ratio=0.5 -> max(1, 1)=1 个点
+        assert out.get("material") == "air"
         assert len(out["wavelength_um"]) >= 1
 
     def test_call_ratio_invalid_returns_error(self):
         out = run_tool("get_material_nk", {
-            "shelf_id": "main",
-            "book_id": "Vacuum",
-            "page_id": "any",
+            "path_keys": ["air"],
             "ratio": 1.5,
         })
         assert isinstance(out, dict)
@@ -76,16 +73,14 @@ class TestGetMaterialNk:
 
 
 class TestExportNkToCsv:
-    """export_nk_to_csv：导出 nk 到 CSV。用 Vacuum 可不依赖材料库。"""
+    """export_nk_to_csv：导出 nk 到 CSV。用 air 可不依赖材料库。"""
 
-    def test_call_vacuum(self):
+    def test_call_air(self):
         with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as f:
             path = f.name
         try:
             out = run_tool("export_nk_to_csv", {
-                "shelf_id": "main",
-                "book_id": "Vacuum",
-                "page_id": "any",
+                "path_keys": ["air"],
                 "out_path": path,
             })
             assert isinstance(out, dict)
@@ -123,12 +118,12 @@ class TestComputeFilmstackBatch:
 
     def test_call(self):
         out = run_tool("compute_filmstack_batch", {
-            "formulas": [_FORMULA_INLINE_NK, "Vacuum 0 L2 0.05 2.0 0 Vacuum 0"],
+            "formulas": [_FORMULA_INLINE_NK, "air 0 L2 0.05 2.0 0 air 0"],
             "angle_deg": 0.0,
             "wl_um": 0.532,
         })
         assert isinstance(out, dict)
-        assert "results" in out or "error" in out  # error when simulation skipped in CI
+        assert "results" in out or "error" in out
         if "results" in out:
             assert len(out["results"]) == 2
 
@@ -142,8 +137,8 @@ class TestSaveResultsCsv:
         try:
             out = run_tool("save_results_csv", {
                 "rows": [
-                    {"formula": "Vacuum 0 SiO2 0.1 Vacuum 0", "R_s": 0.1, "T_s": 0.9},
-                    {"formula": "Vacuum 0 TiO2 0.1 Vacuum 0", "R_s": 0.2, "T_s": 0.8},
+                    {"formula": "air 0 SiO2 0.1 air 0", "R_s": 0.1, "T_s": 0.9},
+                    {"formula": "air 0 TiO2 0.1 air 0", "R_s": 0.2, "T_s": 0.8},
                 ],
                 "out_path": path,
             })
@@ -182,12 +177,12 @@ class TestAllAgentToolsRegistered:
         """每个工具至少能无异常调用一次（用最小合法参数；返回 dict 即算可调用）。"""
         minimal_args = {
             "list_material_index": {"material_name": "SiO2"},
-            "get_material_nk": {"shelf_id": "main", "book_id": "Vacuum", "page_id": "x"},
+            "get_material_nk": {"path_keys": ["air"]},
             "export_nk_to_csv": {
-                "shelf_id": "main", "book_id": "Vacuum", "page_id": "x",
+                "path_keys": ["air"],
                 "out_path": tempfile.mktemp(suffix=".csv"),
             },
-            "parse_film_formula": {"formula": "Vacuum 0 Vacuum 0"},
+            "parse_film_formula": {"formula": "air 0 air 0"},
             "compute_filmstack": {
                 "formula": _FORMULA_INLINE_NK,
                 "angle_deg": 0.0,

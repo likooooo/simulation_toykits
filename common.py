@@ -2,12 +2,26 @@
 
 import io
 from pathlib import Path
-from typing import Any, Callable, List
+from typing import Any, Callable, Dict, List
 
 import streamlit as st
 
-from core.materials import get_nk_at_wavelength as _core_get_nk_at_wavelength
 from simulation_database.workspace import ensure_sim_workspace, get_workspace_materials
+
+
+from filmstack_simulation.simulation import nk_at_wavelength as _material_nk_at_wavelength
+
+HOST_DESIGN_TOKENS_PATH = Path(__file__).resolve().parent / "ui" / "design_tokens.css"
+
+
+def _lookup_nk_at_wavelength(materials_db: Dict[str, Any], name: str, wl_um: float) -> complex:
+    """根据材料库与波长返回复折射率 n + 1j*k。"""
+    if name == "Vacuum":
+        return 1.0 + 0.0j
+    mat = materials_db.get(name)
+    if mat is None:
+        return 1.0 + 0.0j
+    return _material_nk_at_wavelength(mat, wl_um)
 
 
 def pyplot_fixed_width(fig, width: int = None, dpi: int = 100):
@@ -74,11 +88,11 @@ def get_nk_at_wavelength(name, wl_um):
     """Look up nk from workspace materials; show st.error and re-raise on failure."""
     materials_db = get_workspace_materials()
     try:
-        return _core_get_nk_at_wavelength(materials_db, name, wl_um)
+        return _lookup_nk_at_wavelength(materials_db, name, wl_um)
     except Exception as exc:
         st.error(
             f"加载材料 {name} (@ {wl_um} μm) 出错.\n"
-            "1. 请在仿真数据库中添加材料;\n2. 检查材料波长在范围内;\n"
+            "1. 请在仿真数据库工作区中加入该材料;\n2. 检查材料波长在范围内;\n"
         )
         raise exc
 
@@ -339,14 +353,29 @@ def get_laguerre_gaussian_params_from_session(key_prefix):
 def render_filmstack_host(*, render_page, PageContext) -> None:
     """Shared bootstrap for filmstack simulation / optimization host pages."""
     from simulation_database.workspace import ensure_sim_workspace_ui, get_workspace_materials
+    import streamlit as st
+
+    from toykits_config import (
+        FILMSTACK_PRESET_CATALOG,
+        resolve_filmstack_initial_defaults,
+    )
 
     ui = ensure_sim_workspace_ui()
     materials_db = get_workspace_materials()
+    initial = st.session_state.get("_filmstack_initial_defaults") or resolve_filmstack_initial_defaults(
+        FILMSTACK_PRESET_CATALOG.valid_preset_ids
+    )
     render_page(
         context=PageContext(
             get_materials_db=get_workspace_materials,
+            preset_catalog=FILMSTACK_PRESET_CATALOG,
             sim_wl_from=ui.sim_wl_from,
             sim_wl_to=ui.sim_wl_to,
+            recommended_wl_from=initial.wl_from_um,
+            recommended_wl_to=initial.wl_to_um,
+            initial_preset_id=initial.preset_id,
+            initial_formula=initial.formula,
+            tokens_path=HOST_DESIGN_TOKENS_PATH,
         ),
         materials_db=materials_db,
     )

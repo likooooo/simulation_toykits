@@ -18,6 +18,14 @@ STANDARD_AR_FORMULA = (
 def pytest_configure(config) -> None:
     if not os.environ.get("SIMULATION_ARTIFACTS_DIR", "").strip():
         pytest.fail("source scripts/init-toykits-build-env.sh before pytest")
+    artifacts = Path(os.environ["SIMULATION_ARTIFACTS_DIR"]).resolve()
+    expected_db = artifacts / "assets" / "database"
+    actual_db = Path(os.environ.get("SIMULATION_DATABASE_DIR", "")).resolve()
+    if actual_db != expected_db:
+        pytest.fail(
+            f"SIMULATION_DATABASE_DIR must be {expected_db} (collect path); got {actual_db}. "
+            "Run: source scripts/init-toykits-build-env.sh"
+        )
     if str(_REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(_REPO_ROOT))
     os.chdir(os.environ["SIMULATION_ARTIFACTS_DIR"])
@@ -53,38 +61,60 @@ def sample_tmm_layers(standard_ar_formula):
 
 @pytest.fixture(scope="session")
 def sim_db():
-    from simulation_database.database_ui import ensure_simulation_database_initialized
+    import simulation_database_parser as sdp
 
-    return ensure_simulation_database_initialized()
+    return sdp.get_simulation_database(init=True)
 
 
 @pytest.fixture(scope="session")
 def materials_db(sim_db):
-    return load_materials_from_paths(sim_db)
+    import simulation_database_parser as sdp
+
+    from simulation_database.database_ui import object_catalog_name
+    from toykits_config import DEFAULT_MATERIAL_PATH_KEYS
+
+    out: dict[str, object] = {}
+    for path_keys in DEFAULT_MATERIAL_PATH_KEYS:
+        obj = sdp.read_at_query_path(sim_db, path_keys)
+        catalog = object_catalog_name(obj)
+        out[catalog] = obj
+    return out
 
 
 @pytest.fixture(scope="session")
 def preset_parsed_layers(materials_db, filmstack_visualizer):
     """Preset id -> parsed formula layers (shared by preset and formula tests)."""
-    from filmstack_simulation.materials import RECOMMENDED_SIM_WL_FROM_UM, RECOMMENDED_SIM_WL_TO_UM
-    from filmstack_simulation.presets import PRESETS, build_formula_for_preset, get_wl_mid_um
+    from filmstack_simulation.presets import build_formula_for_preset, get_wl_mid_um
+    from toykits_config import (
+        FILMSTACK_PRESET_CATALOG,
+        PRESETS,
+        RECOMMENDED_SIM_WL_FROM_UM,
+        RECOMMENDED_SIM_WL_TO_UM,
+    )
 
     wl_mid = get_wl_mid_um(RECOMMENDED_SIM_WL_FROM_UM, RECOMMENDED_SIM_WL_TO_UM)
     return {
         preset.id: filmstack_visualizer.parse_filmstack_formula_v1(
-            build_formula_for_preset(preset.id, materials_db, wl_mid)
+            build_formula_for_preset(preset.id, FILMSTACK_PRESET_CATALOG, materials_db, wl_mid)
         )
         for preset in PRESETS
     }
 
 
-def load_materials_from_paths(sim_db, path_keys=None) -> dict[str, object]:
-    from filmstack_simulation.materials import DEFAULT_MATERIAL_PATH_KEYS
-    from simulation_database.database_ui import object_catalog_name, read_leaf_at_path
+@pytest.fixture
+def mock_streamlit_session(monkeypatch) -> dict[str, object]:
+    import streamlit as st
 
-    keys = path_keys if path_keys is not None else DEFAULT_MATERIAL_PATH_KEYS
-    db: dict[str, object] = {}
-    for path in keys:
-        obj = read_leaf_at_path(sim_db, "materials", path)
-        db[object_catalog_name(obj)] = obj
-    return db
+    state: dict[str, object] = {}
+    monkeypatch.setattr(st, "session_state", state)
+    return state
+
+
+@pytest.fixture
+def polarization_test_stack(materials_db):
+    """Shared air/SiO2/Si stack for polarization mode tests."""
+    from filmstack_simulation.simulation import resolve_stack
+
+    formula = "air 0 SiO2 0.1 Si 0"
+    materials, thicknesses_um = resolve_stack(formula, materials_db)
+    return materials, thicknesses_um

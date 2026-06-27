@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from filmstack_simulation.filmstack_optimization.local_search.build_config import build_freehand_config
+from filmstack_simulation.filmstack_optimization.local_search.page import build_freehand_config
 from filmstack_simulation.filmstack_optimization.local_search.page import consume_component_event  # noqa: E402
 from filmstack_simulation.filmstack_optimization.local_search.freehand_state import (  # noqa: E402
     FreehandSession,
@@ -23,21 +23,23 @@ from filmstack_simulation.filmstack_optimization.local_search.opt_config import 
     load_freehand_base_config,
 )
 from filmstack_simulation.presets import CUSTOM_PRESET_ID  # noqa: E402
+from toykits_config import FILMSTACK_PRESET_CATALOG  # noqa: E402
 from filmstack_simulation.simulation import combine_polarization_rt, compute_rta_at_angle, resolve_stack  # noqa: E402
 from filmstack_simulation.filmstack_optimization.shared.stack_table import formula_from_stack  # noqa: E402
 
 
 def test_auto_y_max_percent() -> None:
-    assert auto_y_max_percent(np.array([0.5])) == pytest.approx(60.0)
-    assert auto_y_max_percent(np.array([0.9])) == pytest.approx(100.0)
+    assert auto_y_max_percent(np.array([0.5])) == pytest.approx(50.0)
+    assert auto_y_max_percent(np.array([0.9])) == pytest.approx(90.0)
+    assert auto_y_max_percent(np.array([0.995])) == pytest.approx(100.0)
     assert auto_y_max_percent(np.array([0.0])) == pytest.approx(1.0)
-    assert auto_y_max_percent(None, np.array([0.25, 0.4])) == pytest.approx(48.0)
+    assert auto_y_max_percent(None, np.array([0.25, 0.4])) == pytest.approx(40.0)
 
 
 def test_auto_y_min_percent() -> None:
-    assert auto_y_min_percent(np.array([0.5])) == pytest.approx(40.0)
+    assert auto_y_min_percent(np.array([0.5])) == pytest.approx(50.0)
     assert auto_y_min_percent(np.array([0.0])) == pytest.approx(0.0)
-    assert auto_y_min_percent(None, np.array([0.25, 0.4])) == pytest.approx(20.0)
+    assert auto_y_min_percent(None, np.array([0.25, 0.4])) == pytest.approx(25.0)
 
 
 def test_default_view_domain_uses_percent() -> None:
@@ -47,8 +49,8 @@ def test_default_view_domain_uses_percent() -> None:
         "A": np.array([0.0, 0.0]),
     }
     dom = default_view_domain(0.4, 0.8, current=current)
-    assert dom["R"]["y"] == [pytest.approx(32.0), pytest.approx(60.0)]
-    assert dom["T"]["y"] == [pytest.approx(8.0), pytest.approx(24.0)]
+    assert dom["R"]["y"] == [pytest.approx(40.0), pytest.approx(50.0)]
+    assert dom["T"]["y"] == [pytest.approx(10.0), pytest.approx(20.0)]
     assert dom["A"]["y"] == [0.0, pytest.approx(1.0)]
     assert dom["R"]["yAuto"] is True
 
@@ -93,7 +95,92 @@ def test_apply_optimization_result_refreshes_auto_y() -> None:
         merit_history=[1.0, 0.5],
         merit_initial=1.0,
     )
-    assert session.view_domain["R"]["y"] == [pytest.approx(40.0), pytest.approx(60.0)]
+    assert session.view_domain["R"]["y"] == [pytest.approx(50.0), pytest.approx(50.0)]
+
+
+def test_apply_optimization_result_preserves_manual_x_zoom() -> None:
+    session = FreehandSession()
+    wl = np.linspace(0.4, 0.8, 3)
+    session.reset_after_build(
+        formula="air 0 SiO2 0.1 Si 0",
+        wl_um=wl,
+        angle_deg=0.0,
+        current={"R": np.array([0.2, 0.2, 0.2]), "T": np.zeros(3), "A": np.zeros(3)},
+        wl_from=0.4,
+        wl_to=0.8,
+    )
+    session.view_domain["R"] = {
+        "x": [0.45, 0.55],
+        "y": [10.0, 40.0],
+        "yAuto": False,
+    }
+    session.apply_optimization_result(
+        formula="air 0 SiO2 0.2 Si 0",
+        current={"R": np.array([0.5, 0.5, 0.5]), "T": np.zeros(3), "A": np.zeros(3)},
+        merit_history=[1.0, 0.5],
+        merit_initial=1.0,
+        pre_optimize_current={"R": np.array([0.2, 0.2, 0.2]), "T": np.zeros(3), "A": np.zeros(3)},
+    )
+    assert session.view_domain["R"]["x"] == [0.45, 0.55]
+    assert session.view_domain["R"]["y"] == [10.0, 40.0]
+    assert session.view_domain["R"]["yAuto"] is False
+
+
+def test_curve_drag_end_syncs_view_domain(curve_drag_session) -> None:
+    session, _wl = curve_drag_session
+    from filmstack_simulation.filmstack_optimization.local_search.page import _handle_component_event
+
+    zoomed = {
+        "R": {"x": [0.45, 0.55], "y": [0.0, 100.0], "yAuto": False},
+        "T": {"x": [0.4, 0.8], "y": [0.0, 1.0], "yAuto": True},
+        "A": {"x": [0.4, 0.8], "y": [0.0, 1.0], "yAuto": True},
+    }
+    _handle_component_event(
+        session,
+        {
+            "type": "curveDragEnd",
+            "target": {"R": np.linspace(0.3, 0.6, 5).tolist(), "T": None, "A": None},
+            "touched": {"R": True, "T": False, "A": False},
+            "viewDomain": zoomed,
+            "triggerOptimize": False,
+        },
+    )
+    assert session.view_domain["R"]["x"] == [0.45, 0.55]
+    assert session.view_domain["R"]["yAuto"] is False
+
+
+def test_view_change_syncs_view_domain(curve_drag_session) -> None:
+    session, _wl = curve_drag_session
+    from filmstack_simulation.filmstack_optimization.local_search.page import (
+        _VIEW_UI_EVENTS,
+        _handle_component_event,
+        _process_component_event,
+    )
+
+    zoomed = {
+        "R": {"x": [0.45, 0.55], "y": [10.0, 40.0], "yAuto": False},
+        "T": {"x": [0.4, 0.8], "y": [0.0, 100.0], "yAuto": False},
+        "A": {"x": [0.4, 0.8], "y": [0.0, 100.0], "yAuto": False},
+    }
+    event = {"type": "viewChange", "viewDomain": zoomed}
+    _handle_component_event(session, event)
+    assert session.view_domain["R"]["x"] == [0.45, 0.55]
+    assert session.view_domain["R"]["y"] == [10.0, 40.0]
+    assert session.view_domain["R"]["yAuto"] is False
+    assert session.view_domain["T"]["y"] == [0.0, 100.0]
+    assert "viewChange" in _VIEW_UI_EVENTS
+    assert (
+        _process_component_event(
+            session,
+            event,
+            {},
+            film_indices=[1],
+            thicknesses_um=[0.0, 0.1, 0.0],
+        )
+        is False
+    )
+    _handle_component_event(session, event)
+    assert session.view_domain["R"]["x"] == [0.45, 0.55]
 
 
 def test_to_component_args_includes_merit_history() -> None:
@@ -116,6 +203,83 @@ def test_to_component_args_includes_merit_history() -> None:
         merit_initial=1.0,
     )
     assert session.to_component_args()["meritHistory"] == [1.0, 0.5]
+
+
+def test_to_component_args_includes_pre_optimize_current() -> None:
+    session = FreehandSession()
+    wl = np.linspace(0.4, 0.8, 3)
+    session.reset_after_build(
+        formula="air 0 SiO2 0.1 Si 0",
+        wl_um=wl,
+        angle_deg=0.0,
+        current={"R": np.array([0.2, 0.2, 0.2]), "T": np.zeros(3), "A": np.zeros(3)},
+        wl_from=0.4,
+        wl_to=0.8,
+    )
+    assert session.to_component_args()["preOptimizeCurrent"] is None
+
+    pre = {"R": np.array([0.2, 0.2, 0.2]), "T": np.zeros(3), "A": np.zeros(3)}
+    session.apply_optimization_result(
+        formula="air 0 SiO2 0.2 Si 0",
+        current={"R": np.array([0.5, 0.5, 0.5]), "T": np.zeros(3), "A": np.zeros(3)},
+        merit_history=[1.0, 0.5],
+        merit_initial=1.0,
+        pre_optimize_current=pre,
+    )
+    args = session.to_component_args()["preOptimizeCurrent"]
+    assert args is not None
+    assert args["R"] == pytest.approx([0.2, 0.2, 0.2])
+
+
+def test_reset_after_build_clears_pre_optimize_current() -> None:
+    session = FreehandSession()
+    wl = np.linspace(0.4, 0.8, 3)
+    session.reset_after_build(
+        formula="air 0 SiO2 0.1 Si 0",
+        wl_um=wl,
+        angle_deg=0.0,
+        current={"R": np.array([0.2, 0.2, 0.2]), "T": np.zeros(3), "A": np.zeros(3)},
+        wl_from=0.4,
+        wl_to=0.8,
+    )
+    session.apply_optimization_result(
+        formula="air 0 SiO2 0.2 Si 0",
+        current={"R": np.array([0.5, 0.5, 0.5]), "T": np.zeros(3), "A": np.zeros(3)},
+        merit_history=[1.0, 0.5],
+        merit_initial=1.0,
+        pre_optimize_current={"R": np.array([0.2, 0.2, 0.2]), "T": np.zeros(3), "A": np.zeros(3)},
+    )
+    session.reset_after_build(
+        formula="air 0 SiO2 0.1 Si 0",
+        wl_um=wl,
+        angle_deg=0.0,
+        current={"R": np.array([0.2, 0.2, 0.2]), "T": np.zeros(3), "A": np.zeros(3)},
+        wl_from=0.4,
+        wl_to=0.8,
+    )
+    assert session.pre_optimize_current is None
+    assert session.to_component_args()["preOptimizeCurrent"] is None
+
+
+def test_apply_optimization_result_y_domain_includes_pre_optimize_current() -> None:
+    session = FreehandSession()
+    wl = np.linspace(0.4, 0.8, 3)
+    session.reset_after_build(
+        formula="air 0 SiO2 0.1 Si 0",
+        wl_um=wl,
+        angle_deg=0.0,
+        current={"R": np.array([0.2, 0.2, 0.2]), "T": np.zeros(3), "A": np.zeros(3)},
+        wl_from=0.4,
+        wl_to=0.8,
+    )
+    session.apply_optimization_result(
+        formula="air 0 SiO2 0.2 Si 0",
+        current={"R": np.array([0.5, 0.5, 0.5]), "T": np.zeros(3), "A": np.zeros(3)},
+        merit_history=[1.0, 0.5],
+        merit_initial=1.0,
+        pre_optimize_current={"R": np.array([0.1, 0.1, 0.9]), "T": np.zeros(3), "A": np.zeros(3)},
+    )
+    assert session.view_domain["R"]["y"] == [pytest.approx(10.0), pytest.approx(90.0)]
 
 
 @pytest.mark.parametrize(
@@ -151,7 +315,7 @@ def test_consume_component_event_deduplicates_replay(event, last_ts, expect_fres
 def test_load_freehand_base_config_reads_optimizer_from_json() -> None:
     cfg = load_freehand_base_config()
     assert cfg["n_wl"] == 100
-    assert cfg["freehand_cost_scope"] == "full"
+    assert cfg["freehand_cost_scope"] == "zoom"
     assert cfg["optimizer"]["options"]["maxiter"] == 8
     assert cfg["optimizer"]["options"]["maxfun"] == 12
     assert cfg["cost_function"]["name"] == "freehand_target"
@@ -161,8 +325,8 @@ def test_load_freehand_base_config_reads_optimizer_from_json() -> None:
     assert "MgF2" in cfg["initial_formula"]
     assert "N-BK7" in cfg["initial_formula"]
     assert get_freehand_n_wl() == 100
-    assert get_freehand_cost_scope() == "full"
-    assert get_freehand_initial_preset_id() == CUSTOM_PRESET_ID
+    assert get_freehand_cost_scope() == "zoom"
+    assert get_freehand_initial_preset_id(FILMSTACK_PRESET_CATALOG.valid_preset_ids) == CUSTOM_PRESET_ID
     formula = get_freehand_initial_formula()
     assert formula.startswith("air 0 MgF2")
     assert formula.endswith("N-BK7 0")
@@ -178,11 +342,8 @@ def test_initial_formula_resolves_with_workspace_materials(materials_db) -> None
     assert 93.52 in film_thicknesses_nm
 
 
-def test_hydrate_widgets_from_session_restores_missing_keys(monkeypatch) -> None:
-    import streamlit as st
-
-    state: dict[str, object] = {}
-    monkeypatch.setattr(st, "session_state", state)
+def test_hydrate_widgets_from_session_restores_missing_keys(mock_streamlit_session) -> None:
+    state = mock_streamlit_session
     session = FreehandSession()
     wl = np.linspace(0.4, 0.8, 5)
     session.reset_after_build(
@@ -440,8 +601,11 @@ def test_formula_from_stack_emits_inline_nk_for_pseudo_material(simulation) -> N
 def test_formula_from_stack_round_trip_optical_filter(materials_db, simulation) -> None:
     from filmstack_visualizer import layers_from_formula
     from filmstack_simulation.presets import build_formula_for_preset
+    from toykits_config import FILMSTACK_PRESET_CATALOG
 
-    formula = build_formula_for_preset("optical_filter", materials_db, 0.55)
+    formula = build_formula_for_preset(
+        "optical_filter", FILMSTACK_PRESET_CATALOG, materials_db, 0.55
+    )
     mats, th = layers_from_formula(formula, materials_db, simulation_module=simulation)
     round_trip = formula_from_stack(mats, th, materials_db)
     mats2, th2 = layers_from_formula(round_trip, materials_db, simulation_module=simulation)
@@ -550,9 +714,8 @@ def test_build_freehand_config_includes_polarization() -> None:
     assert cfg["polarization"] == "TE"
 
 
-def test_compute_rta_at_angle_polarization_modes(materials_db) -> None:
-    formula = "air 0 SiO2 0.1 Si 0"
-    materials, thicknesses_um = resolve_stack(formula, materials_db)
+def test_compute_rta_at_angle_polarization_modes(polarization_test_stack) -> None:
+    materials, thicknesses_um = polarization_test_stack
     kwargs = {
         "materials": materials,
         "thicknesses_um": thicknesses_um,
@@ -569,11 +732,10 @@ def test_compute_rta_at_angle_polarization_modes(materials_db) -> None:
     assert np.allclose(unpol["A"], 1.0 - unpol["R"] - unpol["T"])
 
 
-def test_compute_spectral_map_2d_polarization_modes(materials_db) -> None:
+def test_compute_spectral_map_2d_polarization_modes(polarization_test_stack) -> None:
     from filmstack_simulation.simulation import compute_spectral_map_2d
 
-    formula = "air 0 SiO2 0.1 Si 0"
-    materials, thicknesses_um = resolve_stack(formula, materials_db)
+    materials, thicknesses_um = polarization_test_stack
     kwargs = {
         "materials": materials,
         "thicknesses_um": thicknesses_um,
@@ -591,3 +753,142 @@ def test_compute_spectral_map_2d_polarization_modes(materials_db) -> None:
     assert not np.allclose(te["R"], tm["R"])
     assert np.array_equal(unpol["Psi"], te["Psi"])
     assert np.array_equal(unpol["Delta"], te["Delta"])
+
+
+def test_film_layer_indices() -> None:
+    from filmstack_simulation.filmstack_optimization.shared.stack_table import film_layer_indices
+
+    assert film_layer_indices(3) == [1]
+    assert film_layer_indices(9) == list(range(1, 8))
+
+
+def test_layer_bounds_from_ranges() -> None:
+    from filmstack_simulation.filmstack_optimization.shared.stack_table import layer_bounds_from_ranges
+
+    t0 = 0.1
+    bounds = layer_bounds_from_ranges([1], [0.0, t0, 0.0], {1: 30.0})
+    assert bounds == [{"index": 1, "min": pytest.approx(0.07), "max": pytest.approx(0.13)}]
+
+    fixed = layer_bounds_from_ranges([1], [0.0, t0, 0.0], {1: 0.0})
+    assert fixed[0]["min"] == pytest.approx(t0)
+    assert fixed[0]["max"] == pytest.approx(t0)
+
+    wide = layer_bounds_from_ranges([1], [0.0, t0, 0.0], {1: 100.0})
+    assert wide[0]["min"] == pytest.approx(0.0)
+    assert wide[0]["max"] == pytest.approx(2 * t0)
+
+
+def test_stack_table_rows_includes_range_column() -> None:
+    import pandas as pd
+    from filmstack_simulation.filmstack_optimization.shared.stack_table import stack_table_rows
+
+    df = stack_table_rows(
+        ["air", "SiO2", "Si"],
+        [0.0, 0.1, 0.0],
+        layer_range_pct={1: 30.0},
+        film_indices=[1],
+    )
+    assert list(df.columns) == ["_idx", "材料", "厚度 (μm)", "厚度变化范围 (%)"]
+    assert df.at[0, "厚度 (μm)"] == "∞"
+    assert pd.isna(df.at[0, "厚度变化范围 (%)"])
+    assert df.at[1, "厚度变化范围 (%)"] == pytest.approx(30.0)
+    assert pd.isna(df.at[2, "厚度变化范围 (%)"])
+
+
+def test_sync_layer_range_pct_from_table() -> None:
+    import pandas as pd
+    from filmstack_simulation.filmstack_optimization.shared.stack_table import sync_layer_range_pct_from_table
+
+    edited = pd.DataFrame(
+        {
+            "_idx": [0, 1, 2],
+            "材料": ["air", "SiO2", "Si"],
+            "厚度 (μm)": ["∞", "0.10000", "∞"],
+            "厚度变化范围 (%)": [pd.NA, 25.0, pd.NA],
+        }
+    )
+    assert sync_layer_range_pct_from_table(edited, [1]) == {1: 25.0}
+
+
+def test_sync_layer_range_pct_uses_idx_after_reorder() -> None:
+    import pandas as pd
+    from filmstack_simulation.filmstack_optimization.shared.stack_table import sync_layer_range_pct_from_table
+
+    edited = pd.DataFrame(
+        {
+            "_idx": [2, 0, 1],
+            "材料": ["Si", "air", "SiO2"],
+            "厚度 (μm)": ["∞", "∞", "0.10000"],
+            "厚度变化范围 (%)": [pd.NA, pd.NA, 40.0],
+        }
+    )
+    assert sync_layer_range_pct_from_table(edited, [1]) == {1: 40.0}
+
+
+def test_reset_after_build_initializes_layer_range_pct() -> None:
+    session = FreehandSession()
+    wl = np.linspace(0.4, 0.8, 3)
+    session.reset_after_build(
+        formula="air 0 SiO2 0.1 Si 0",
+        wl_um=wl,
+        angle_deg=0.0,
+        current={"R": np.zeros(3), "T": np.zeros(3), "A": np.zeros(3)},
+        wl_from=0.4,
+        wl_to=0.8,
+        film_indices=[1],
+        default_range_pct=30.0,
+    )
+    assert session.layer_range_pct == {1: 30.0}
+
+
+def test_apply_optimization_result_preserves_layer_range_pct() -> None:
+    session = FreehandSession()
+    wl = np.linspace(0.4, 0.8, 3)
+    session.reset_after_build(
+        formula="air 0 SiO2 0.1 Si 0",
+        wl_um=wl,
+        angle_deg=0.0,
+        current={"R": np.zeros(3), "T": np.zeros(3), "A": np.zeros(3)},
+        wl_from=0.4,
+        wl_to=0.8,
+        film_indices=[1],
+        default_range_pct=30.0,
+    )
+    session.layer_range_pct[1] = 15.0
+    session.apply_optimization_result(
+        formula="air 0 SiO2 0.12 Si 0",
+        current={"R": np.zeros(3), "T": np.zeros(3), "A": np.zeros(3)},
+        merit_history=[1.0, 0.5],
+    )
+    assert session.layer_range_pct == {1: 15.0}
+
+
+def test_build_freehand_config_includes_layer_bounds() -> None:
+    import filmstack_optimization_utils as fos  # noqa: E402
+
+    cfg = build_freehand_config(
+        working_formula="air 0 SiO2 0.1 Si 0",
+        wl_from=0.4,
+        wl_to=0.8,
+        n_wl=5,
+        angle_deg=0.0,
+        touched={"R": False, "T": False, "A": False},
+        target={"R": None, "T": None, "A": None},
+        film_indices=[1],
+        thicknesses_um=[0.0, 0.1, 0.0],
+        layer_range_pct={1: 30.0},
+    )
+    assert cfg["layer_bounds"] == [
+        {"index": 1, "min": pytest.approx(0.07), "max": pytest.approx(0.13)}
+    ]
+    assert fos.resolve_layer_bounds(cfg, [1]) == [
+        (pytest.approx(0.07), pytest.approx(0.13))
+    ]
+
+
+def test_get_freehand_default_thickness_range_pct() -> None:
+    from filmstack_simulation.filmstack_optimization.local_search.opt_config import (
+        get_freehand_default_thickness_range_pct,
+    )
+
+    assert get_freehand_default_thickness_range_pct() == pytest.approx(30.0)

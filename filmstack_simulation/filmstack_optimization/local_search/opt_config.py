@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import filmstack_visualizer
-from filmstack_simulation.presets import CUSTOM_PRESET_ID, VALID_PRESET_IDS
+from filmstack_simulation.presets import CUSTOM_PRESET_ID
 
 _DEFAULT_JSON = Path(__file__).with_name("freehand_base_opt.json")
 _COST_MODULE = Path(__file__).with_name("cost_freehand.py")
@@ -23,6 +23,7 @@ def resolve_opt_config_path() -> Path | None:
 
 
 _DEFAULT_N_WL = 80
+_DEFAULT_THICKNESS_RANGE_PCT = 30.0
 _VALID_COST_SCOPES = ("full", "zoom", "stroke")
 _DEFAULT_COST_SCOPE = "full"
 
@@ -48,12 +49,14 @@ def get_freehand_n_wl() -> int:
     return n_wl
 
 
-def get_freehand_initial_preset_id() -> str:
+def get_freehand_initial_preset_id(valid_preset_ids: frozenset[str]) -> str:
     """Return initial preset id from base JSON (deploy-time tuning)."""
     cfg = load_freehand_base_config()
     preset_id = str(cfg.get("initial_preset_id") or CUSTOM_PRESET_ID)
-    if preset_id not in VALID_PRESET_IDS:
-        raise ValueError(f"initial_preset_id must be one of {sorted(VALID_PRESET_IDS)}, got {preset_id!r}")
+    if preset_id not in valid_preset_ids:
+        raise ValueError(
+            f"initial_preset_id must be one of {sorted(valid_preset_ids)}, got {preset_id!r}"
+        )
     return preset_id
 
 
@@ -61,6 +64,15 @@ def get_freehand_initial_formula() -> str:
     """Return initial filmstack formula from base JSON (deploy-time tuning)."""
     cfg = load_freehand_base_config()
     return str(cfg.get("initial_formula") or "")
+
+
+def get_freehand_default_thickness_range_pct() -> float:
+    """Return default per-layer thickness variation (%) from base JSON."""
+    cfg = load_freehand_base_config()
+    pct = float(cfg.get("default_thickness_range_pct", _DEFAULT_THICKNESS_RANGE_PCT))
+    if not 0.0 <= pct <= 100.0:
+        raise ValueError(f"default_thickness_range_pct must be in [0, 100], got {pct}")
+    return pct
 
 
 def load_freehand_base_config() -> dict[str, Any]:

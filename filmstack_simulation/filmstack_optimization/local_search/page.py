@@ -2,43 +2,60 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence
 
 import numpy as np
 import streamlit as st
 import streamlit.components.v1 as components
 
-from filmstack_simulation.materials import RECOMMENDED_SIM_WL_FROM_UM, RECOMMENDED_SIM_WL_TO_UM
+from filmstack_simulation.help_texts import (
+    FORMULA_DOCS_URL,
+    FORMULA_HELP_TEXT,
+    FREEHAND_CHART_HELP_TEXT,
+    OPTIMIZED_FORMULA_HELP_TEXT,
+    WL_RANGE_LABEL,
+)
 from filmstack_simulation.page_widgets import (
-    DEFAULT_POLARIZATION,
-    init_formula_default,
-    init_preset_select,
+    FORMULA_STACK_HEIGHT_PX,
     on_preset_change,
     panel_head,
-    polarization_select,
+    params_stack_spacer,
+    preset_polarization_row,
     range_inputs,
     resolve_stack_cached,
+    show_rebuild_prompt,
+    single_input_row,
+)
+import filmstack_visualizer
+import filmstack_optimization_utils as fos
+from filmstack_simulation.page_shell import (
+    FilmstackSessionKeys,
+    PageContext,
+    bootstrap_filmstack_page,
+    ensure_filmstack_session_defaults,
 )
 from filmstack_simulation.page_styles import inject_filmstack_opt_styles
-from filmstack_simulation.filmstack_optimization.local_search.build_config import build_freehand_config
-from filmstack_simulation.filmstack_optimization.local_search.freehand_state import FreehandSession, METRICS
+from filmstack_simulation.filmstack_optimization.local_search.freehand_state import (
+    FreehandSession,
+    METRICS,
+    build_freehand_wl_indices,
+)
 from filmstack_simulation.filmstack_optimization.local_search.opt_config import (
-    get_freehand_initial_formula,
-    get_freehand_initial_preset_id,
+    get_freehand_cost_scope,
+    get_freehand_default_thickness_range_pct,
     get_freehand_n_wl,
+    load_freehand_base_config,
 )
-from filmstack_simulation.filmstack_optimization.local_search.optimize_runner import run_freehand_optimize
-from filmstack_simulation.presets import (
-    CUSTOM_PRESET_ID,
-    PRESET_IDS,
-    PRESET_LABELS,
-    build_formula_for_preset,
-    get_wl_mid_um,
+from filmstack_simulation.filmstack_optimization.shared.stack_table import (
+    film_layer_indices,
+    formula_from_stack,
+    layer_bounds_from_ranges,
+    stack_table_rows,
+    sync_layer_range_pct_from_table,
 )
+from filmstack_simulation.presets import PresetCatalog
 from filmstack_simulation.simulation import compute_rta_at_angle, resolve_stack
-from filmstack_simulation.filmstack_optimization.shared.stack_table import stack_table_rows
 
 _FREEHAND_FRONTEND = str(Path(__file__).resolve().parents[1] / "component" / "frontend")
 _freehand_component = components.declare_component("freehand_rta_editor", path=_FREEHAND_FRONTEND)
@@ -61,31 +78,131 @@ def freehand_editor(*, key: str | None = None, **kwargs: Any) -> dict[str, Any] 
     return _freehand_component(key=key, default=None, **kwargs)
 
 
-_TOKENS_PATH = Path(__file__).resolve().parents[1] / "design_tokens.css"
 _SESSION_KEY = "fs_opt_freehand"
 _FORMULA_KEY = "fs_opt_formula"
 _PRESET_KEY = "fs_opt_preset"
 _PRESET_SELECT_KEY = "fs_opt_preset_select"
 _PAGE_CONTEXT_KEY = "_fs_opt_page_context"
 _LAST_EVENT_TS_KEY = "fs_opt_last_event_ts"
+_RENDER_GEN_KEY = "fs_opt_render_gen"
 _OPT_SUCCESS_KEY = "fs_opt_opt_success"
+_LAYER_TABLE_KEY = "fs_opt_layer_table"
+_VIEW_UI_EVENTS = frozenset({"viewChange", "activeMetric", "clearTarget"})
 
 _WL_FROM_KEY = "fs_opt_wl_from"
 _WL_TO_KEY = "fs_opt_wl_to"
 _ANGLE_KEY = "fs_opt_angle"
 _POLARIZATION_KEY = "fs_opt_polarization"
+_POLARIZATION_CHANGED_KEY = "fs_opt_polarization_changed"
+_PRESET_CHANGED_KEY = "fs_opt_preset_changed"
 
-DEFAULT_WL_FROM = RECOMMENDED_SIM_WL_FROM_UM
-DEFAULT_WL_TO = RECOMMENDED_SIM_WL_TO_UM
-DEFAULT_ANGLE = 0.0
-ANGLE_CLAMP = (-89.9, 89.9)
-_BUILD_ROW_COLS = [5, 1]
-_BUILD_FORMULA_HEIGHT = 132
-_ANGLE_WITH_POL_COLS = [1.15, 1, 0.85]
+_ANGLE_CLAMP = (-89.9, 89.9)
+_DEFAULT_ANGLE = 0.0
+_INPUT_ROW_COLS = [1.5, 1]
 
 
-def inject_global_styles() -> None:
-    inject_filmstack_opt_styles(_TOKENS_PATH)
+_SESSION_KEYS = FilmstackSessionKeys(
+    formula_key=_FORMULA_KEY,
+    preset_key=_PRESET_KEY,
+    preset_select_key=_PRESET_SELECT_KEY,
+    polarization_key=_POLARIZATION_KEY,
+    page_context_key=_PAGE_CONTEXT_KEY,
+)
+
+
+def build_freehand_config(
+    *,
+    working_formula: str,
+    wl_from: float,
+    wl_to: float,
+    n_wl: int,
+    angle_deg: float,
+    touched: Mapping[str, bool],
+    target: Mapping[str, np.ndarray | None],
+    wl_um: np.ndarray | None = None,
+    view_domain: Mapping[str, dict[str, list[float]]] | None = None,
+    edit_wl_indices: Mapping[str, set[int] | list[int] | None] | None = None,
+    cost_scope: str | None = None,
+    polarization: str = "UNPOLARIZED",
+    film_indices: Sequence[int] | None = None,
+    thicknesses_um: Sequence[float] | None = None,
+    layer_range_pct: Mapping[int, float] | None = None,
+) -> Dict[str, Any]:
+    wl_step = (float(wl_to) - float(wl_from)) / max(int(n_wl) - 1, 1)
+    scope = cost_scope if cost_scope is not None else get_freehand_cost_scope()
+    runtime: Dict[str, Any] = {
+        "formula": working_formula,
+        "target_wl": [float(wl_from), float(wl_to), wl_step],
+        "target_angle": [float(angle_deg), float(angle_deg)],
+        "polarization": str(polarization).upper(),
+        "freehand_touched": {k: bool(touched.get(k)) for k in ("R", "T", "A")},
+        "freehand_cost_scope": scope,
+    }
+    if touched.get("R") and target.get("R") is not None:
+        runtime["R_target_spectrum"] = np.asarray(target["R"], dtype=float).reshape(1, -1).tolist()
+    if touched.get("T") and target.get("T") is not None:
+        runtime["T_target_spectrum"] = np.asarray(target["T"], dtype=float).reshape(1, -1).tolist()
+    if touched.get("A") and target.get("A") is not None:
+        runtime["A_target_spectrum"] = np.asarray(target["A"], dtype=float).reshape(1, -1).tolist()
+    if wl_um is not None:
+        wl_indices = build_freehand_wl_indices(
+            scope=scope,
+            wl_um=np.asarray(wl_um, dtype=float),
+            touched=touched,
+            view_domain=view_domain or {},
+            edit_wl_indices=edit_wl_indices or {},
+        )
+        if wl_indices:
+            runtime["freehand_wl_indices"] = wl_indices
+    if (
+        film_indices is not None
+        and thicknesses_um is not None
+        and layer_range_pct is not None
+    ):
+        runtime["layer_bounds"] = layer_bounds_from_ranges(
+            film_indices, thicknesses_um, layer_range_pct
+        )
+    return filmstack_visualizer.merge_filmstack_optimization_config(
+        load_freehand_base_config(), runtime
+    )
+
+
+def run_freehand_optimize(
+    cfg: Dict[str, Any],
+    materials_db: Dict[str, Any],
+) -> tuple[str, list[float], Dict[str, np.ndarray], float]:
+    spec = fos.stack_from_formula(cfg["formula"], materials_db)
+    targets, target_wls, target_angles = fos.build_targets_from_cfg(cfg)
+    pol = fos.Polarization(str(cfg["polarization"]).upper())
+    ctx = fos.make_objective_context(spec, targets, pol, cfg)
+    ctx.freehand_touched = dict(cfg.get("freehand_touched", {}))
+    ctx.freehand_wl_indices = dict(cfg.get("freehand_wl_indices", {}))
+    ctx.optimization_cfg = cfg
+
+    cost_fn = fos.load_filmstack_cost_function(
+        cfg["cost_function"]["path"], cfg["cost_function"]["name"]
+    )
+    x0 = np.array([spec.thicknesses_um[i] for i in spec.film_indices], dtype=float)
+    merit_initial, _ = cost_fn(x0, ctx)
+    opt_x, _, merit_history, _ = fos._run_optimize(spec, ctx, cost_fn, cfg)
+
+    thicknesses = list(spec.thicknesses_um)
+    for idx, t in zip(spec.film_indices, opt_x):
+        thicknesses[idx] = float(t)
+    optimized_formula = formula_from_stack(spec.materials, thicknesses, materials_db)
+
+    wls, angles, _, _ = fos.resolve_target_axes(cfg)
+    curves = compute_rta_at_angle(
+        spec.materials,
+        thicknesses,
+        float(angles[0]),
+        float(wls.min()),
+        float(wls.max()),
+        n_wl=len(wls),
+        polarization=str(cfg.get("polarization", "UNPOLARIZED")),
+    )
+    current = {"R": curves["R"], "T": curves["T"], "A": curves["A"]}
+    return optimized_formula, merit_history, current, float(merit_initial)
 
 
 _STACK_RESOLVED_KEY = "fs_opt_stack_resolved"
@@ -101,7 +218,7 @@ def _resolve_stack_cached(formula: str, db: Dict[str, Any]) -> tuple[list[Any], 
 
 
 def _clamp_angle(v: float) -> float:
-    return float(max(ANGLE_CLAMP[0], min(ANGLE_CLAMP[1], v)))
+    return float(max(_ANGLE_CLAMP[0], min(_ANGLE_CLAMP[1], v)))
 
 
 def _session() -> FreehandSession:
@@ -129,86 +246,84 @@ def _hydrate_widgets_from_session(session: FreehandSession) -> None:
 def ensure_session_defaults(
     materials_db: Optional[Dict[str, Any]] = None,
     *,
+    preset_catalog: PresetCatalog,
+    initial_preset_id: str,
+    initial_formula: str,
     sim_wl_from: float | None = None,
     sim_wl_to: float | None = None,
 ) -> None:
-    initial_preset = get_freehand_initial_preset_id()
-    init_preset_select(
-        preset_key=_PRESET_KEY,
-        preset_select_key=_PRESET_SELECT_KEY,
-        preset_ids=PRESET_IDS,
-        default_preset_id=initial_preset,
+    ensure_filmstack_session_defaults(
+        materials_db,
+        keys=_SESSION_KEYS,
+        preset_catalog=preset_catalog,
+        initial_preset_id=initial_preset_id,
+        initial_formula=initial_formula,
+        sim_wl_from=sim_wl_from,
+        sim_wl_to=sim_wl_to,
     )
-    if _FORMULA_KEY not in st.session_state:
-        if initial_preset == CUSTOM_PRESET_ID:
-            default_formula = get_freehand_initial_formula()
-        elif materials_db:
-            wl_mid = get_wl_mid_um(sim_wl_from, sim_wl_to)
-            default_formula = build_formula_for_preset(
-                initial_preset, materials_db, wl_mid
-            )
-        else:
-            default_formula = ""
-        init_formula_default(
-            formula_key=_FORMULA_KEY,
-            materials_db=materials_db,
-            default_formula=default_formula,
-        )
-    if _POLARIZATION_KEY not in st.session_state:
-        st.session_state[_POLARIZATION_KEY] = DEFAULT_POLARIZATION
+
+
+def _on_polarization_change() -> None:
+    st.session_state[_POLARIZATION_CHANGED_KEY] = True
 
 
 def _on_preset_change() -> None:
+    st.session_state[_PRESET_CHANGED_KEY] = True
+    ctx = st.session_state.get(_PAGE_CONTEXT_KEY)
+    if ctx is None:
+        return
     on_preset_change(
         preset_select_key=_PRESET_SELECT_KEY,
         preset_key=_PRESET_KEY,
         formula_key=_FORMULA_KEY,
         page_context_key=_PAGE_CONTEXT_KEY,
-        preset_ids=PRESET_IDS,
+        preset_ids=ctx.preset_catalog.preset_ids,
     )
 
 
-def _angle_with_polarization_input(
-    label: str,
+def _params_stale(
+    session: FreehandSession,
+    formula: str,
     *,
-    key: str,
-    default: float,
-    fmt: str,
-) -> tuple[float, str]:
-    title, c_val, c_pol = st.columns(_ANGLE_WITH_POL_COLS, gap="small")
-    with title:
-        panel_head(label, css_prefix="fs-opt")
-    with c_val:
-        angle = st.number_input(
-            label,
-            value=default,
-            format=fmt,
-            key=key,
-            label_visibility="collapsed",
-        )
-    with c_pol:
-        polarization = polarization_select(key=_POLARIZATION_KEY)
-    return angle, polarization
+    wl_from: float,
+    wl_to: float,
+    angle_deg: float,
+    polarization: str,
+) -> bool:
+    if not session.built:
+        return False
+    if formula.strip() != session.working_formula:
+        return True
+    if abs(angle_deg - session.angle_deg) > 1e-6:
+        return True
+    if polarization != session.polarization:
+        return True
+    if abs(wl_from - session.wl_from) > 1e-9 or abs(wl_to - session.wl_to) > 1e-9:
+        return True
+    return False
 
 
 GetMaterialsDb = Callable[[], Dict[str, Any]]
 
 
-@dataclass(frozen=True)
-class PageContext:
-    get_materials_db: GetMaterialsDb
-    sim_wl_from: float | None = None
-    sim_wl_to: float | None = None
+def _sync_view_domain(session: FreehandSession, event: dict[str, Any]) -> None:
+    view_domain = event.get("viewDomain")
+    if view_domain:
+        session.view_domain = view_domain
+
+
+def _bump_render_gen() -> None:
+    st.session_state[_RENDER_GEN_KEY] = int(st.session_state.get(_RENDER_GEN_KEY, 0)) + 1
 
 
 def _handle_component_event(session: FreehandSession, event: dict[str, Any]) -> bool:
     """Return True if optimization should run."""
     etype = event.get("type")
+    _sync_view_domain(session, event)
     if etype == "activeMetric":
         session.active_metric = str(event.get("activeMetric", "R"))
         return False
     if etype == "viewChange":
-        session.view_domain = event.get("viewDomain", session.view_domain)
         return False
     if etype == "clearTarget":
         metric = event.get("metric")
@@ -236,11 +351,17 @@ def _handle_component_event(session: FreehandSession, event: dict[str, Any]) -> 
 def _run_freehand_optimize(
     session: FreehandSession,
     db: Dict[str, Any],
+    *,
+    film_indices: list[int],
+    thicknesses_um: list[float],
 ) -> str | None:
     """Run L-BFGS-B synchronously. Return success message, or None on failure."""
     session.optimizing = True
     try:
         with st.spinner("L-BFGS-B 优化中…"):
+            pre_current = {
+                k: np.asarray(v, dtype=float).copy() for k, v in session.current.items()
+            }
             cfg = build_freehand_config(
                 working_formula=session.working_formula,
                 wl_from=session.wl_from,
@@ -253,6 +374,9 @@ def _run_freehand_optimize(
                 wl_um=session.wl_um,
                 view_domain=session.view_domain,
                 polarization=session.polarization,
+                film_indices=film_indices,
+                thicknesses_um=thicknesses_um,
+                layer_range_pct=session.layer_range_pct,
             )
             opt_formula, merit_history, current, merit_initial = run_freehand_optimize(cfg, db)
             session.apply_optimization_result(
@@ -260,8 +384,10 @@ def _run_freehand_optimize(
                 current=current,
                 merit_history=merit_history,
                 merit_initial=merit_initial,
+                pre_optimize_current=pre_current,
             )
             st.session_state["fs_opt_reset_component"] = True
+            _bump_render_gen()
             merit_final = merit_history[-1] if merit_history else merit_initial
             return (
                 f"优化完成（第 {session.opt_round} 轮），"
@@ -281,15 +407,23 @@ def _process_component_event(
     session: FreehandSession,
     event: dict[str, Any],
     db: Dict[str, Any],
+    *,
+    film_indices: list[int],
+    thicknesses_um: list[float],
 ) -> bool:
     """Handle component event; run optimization inline when triggered. Return True if rerun needed."""
     should_optimize = _handle_component_event(session, event)
-    if not should_optimize:
+    if should_optimize:
+        message = _run_freehand_optimize(
+            session,
+            db,
+            film_indices=film_indices,
+            thicknesses_um=thicknesses_um,
+        )
+        if message is not None:
+            st.session_state[_OPT_SUCCESS_KEY] = message
+            return True
         return False
-    message = _run_freehand_optimize(session, db)
-    if message is not None:
-        st.session_state[_OPT_SUCCESS_KEY] = message
-        return True
     return False
 
 
@@ -298,67 +432,70 @@ def render_page(
     context: PageContext,
     materials_db: Optional[Dict[str, Any]] = None,
 ) -> None:
-    st.set_page_config(page_title="Freehand 局部优化", layout="wide")
-    inject_global_styles()
-    st.session_state[_PAGE_CONTEXT_KEY] = context
-    db = materials_db if materials_db is not None else context.get_materials_db()
-    ensure_session_defaults(
-        db if db else None,
-        sim_wl_from=context.sim_wl_from,
-        sim_wl_to=context.sim_wl_to,
+    db, _, preset_ids, preset_labels, default_wl_from, default_wl_to = bootstrap_filmstack_page(
+        page_title="Freehand 局部优化",
+        inject_styles=inject_filmstack_opt_styles,
+        context=context,
+        keys=_SESSION_KEYS,
+        materials_db=materials_db,
     )
     session = _session()
     _hydrate_widgets_from_session(session)
 
-    st.markdown('<div class="fs-opt-page-marker"></div>', unsafe_allow_html=True)
     st.markdown('<h1 class="fs-opt-title">Freehand 局部优化</h1>', unsafe_allow_html=True)
 
-    panel_head("多层膜构建指令", css_prefix="fs-opt")
-    st.markdown('<div class="fs-opt-build-row-marker"></div>', unsafe_allow_html=True)
-    formula_col, action_col = st.columns(_BUILD_ROW_COLS, gap="small")
+    panel_head(
+        "多层膜构建指令",
+        css_prefix="fs-opt",
+        help_text=FORMULA_HELP_TEXT,
+        help_url=FORMULA_DOCS_URL,
+    )
+    st.markdown('<div class="fs-opt-input-row-marker"></div>', unsafe_allow_html=True)
+    formula_col, params_col = st.columns(_INPUT_ROW_COLS, gap="small")
     with formula_col:
+        st.markdown('<div class="fs-opt-formula-area-marker"></div>', unsafe_allow_html=True)
         formula = st.text_area(
             "多层膜构建指令",
-            height=_BUILD_FORMULA_HEIGHT,
+            height=FORMULA_STACK_HEIGHT_PX,
+            help=FORMULA_HELP_TEXT,
             label_visibility="collapsed",
             key=_FORMULA_KEY,
         )
-    with action_col:
-        st.markdown('<div class="fs-opt-build-right-marker"></div>', unsafe_allow_html=True)
-        st.selectbox(
-            "预设膜系",
-            range(len(PRESET_IDS)),
-            format_func=lambda i: PRESET_LABELS[PRESET_IDS[i]],
-            key=_PRESET_SELECT_KEY,
-            on_change=_on_preset_change,
-            label_visibility="collapsed",
+    with params_col:
+        st.markdown('<div class="fs-opt-params-stack-marker"></div>', unsafe_allow_html=True)
+        polarization = preset_polarization_row(
+            preset_options=range(len(preset_ids)),
+            preset_format_func=lambda i: preset_labels[preset_ids[i]],
+            preset_key=_PRESET_SELECT_KEY,
+            preset_on_change=_on_preset_change,
+            polarization_key=_POLARIZATION_KEY,
+            polarization_on_change=_on_polarization_change,
+            css_prefix="fs-opt",
         )
-        build_clicked = st.button("构建", key="fs_opt_build", width="stretch")
-
-    col_wl, _, col_ang = st.columns([1, 0.5, 1], gap="small")
-    with col_wl:
         wl_from, wl_to = range_inputs(
-            "波长范围 (μm)",
+            WL_RANGE_LABEL,
             css_prefix="fs-opt",
             key_from=_WL_FROM_KEY,
             key_to=_WL_TO_KEY,
-            default_from=context.sim_wl_from or DEFAULT_WL_FROM,
-            default_to=context.sim_wl_to or DEFAULT_WL_TO,
+            default_from=default_wl_from,
+            default_to=default_wl_to,
             fmt="%.4f",
         )
-    with col_ang:
-        st.markdown('<div class="fs-opt-param-right-marker"></div>', unsafe_allow_html=True)
-        angle_fix, polarization = _angle_with_polarization_input(
+        angle_fix = single_input_row(
             "固定入射角 θ (°)",
+            css_prefix="fs-opt",
             key=_ANGLE_KEY,
-            default=DEFAULT_ANGLE,
+            default=_DEFAULT_ANGLE,
             fmt="%.2f",
         )
+        sim_clicked = st.button("仿真", key="fs_opt_build", width="stretch")
+        params_stack_spacer(css_prefix="fs-opt")
+
     angle_fix = _clamp_angle(angle_fix)
     polarization = str(polarization).upper()
 
     just_built = False
-    if build_clicked and formula.strip():
+    if sim_clicked and formula.strip():
         try:
             materials, thicknesses_um = _resolve_stack_cached(formula.strip(), db)
             curves = compute_rta_at_angle(
@@ -378,56 +515,88 @@ def render_page(
                 wl_from=wl_from,
                 wl_to=wl_to,
                 polarization=polarization,
+                film_indices=film_layer_indices(len(thicknesses_um)),
+                default_range_pct=get_freehand_default_thickness_range_pct(),
             )
             st.session_state["fs_opt_reset_component"] = True
+            _bump_render_gen()
+            st.session_state.pop(_LAYER_TABLE_KEY, None)
+            st.session_state.pop(_POLARIZATION_CHANGED_KEY, None)
+            st.session_state.pop(_PRESET_CHANGED_KEY, None)
             just_built = True
         except Exception as exc:
-            st.error(f"构建失败: {exc}")
+            st.error(f"仿真失败: {exc}")
+
+    show_rebuild_prompt(
+        has_built=session.built,
+        polarization_changed=bool(st.session_state.pop(_POLARIZATION_CHANGED_KEY, False)),
+        preset_changed=bool(st.session_state.pop(_PRESET_CHANGED_KEY, False)),
+        params_stale=_params_stale(
+            session,
+            formula,
+            wl_from=wl_from,
+            wl_to=wl_to,
+            angle_deg=angle_fix,
+            polarization=polarization,
+        ),
+    )
 
     if session.built:
+        materials: list[Any] = []
+        thicknesses_um: list[float] = []
+        film_indices: list[int] = []
         try:
             materials, thicknesses_um = _resolve_stack_cached(session.working_formula, db)
-            st.dataframe(stack_table_rows(materials, thicknesses_um), width="stretch")
-        except Exception as exc:
-            st.warning(f"层表解析失败: {exc}")
-
-        recompute = False
-        if (
-            abs(angle_fix - session.angle_deg) > 1e-6
-            or polarization != session.polarization
-        ):
-            recompute = True
-        elif (
-            abs(wl_from - session.wl_from) > 1e-9
-            or abs(wl_to - session.wl_to) > 1e-9
-        ):
-            recompute = True
-
-        if recompute:
-            materials, thicknesses_um = _resolve_stack_cached(session.working_formula, db)
-            curves = compute_rta_at_angle(
+            film_indices = film_layer_indices(len(thicknesses_um))
+            layer_table = stack_table_rows(
                 materials,
                 thicknesses_um,
-                angle_fix,
-                wl_from,
-                wl_to,
-                n_wl=len(session.wl_um) if abs(wl_from - session.wl_from) < 1e-9 and abs(wl_to - session.wl_to) < 1e-9 else get_freehand_n_wl(),
-                polarization=polarization,
+                layer_range_pct=session.layer_range_pct,
+                film_indices=film_indices,
             )
-            session.angle_deg = angle_fix
-            session.polarization = polarization
-            session.wl_from = wl_from
-            session.wl_to = wl_to
-            session.current = {"R": curves["R"], "T": curves["T"], "A": curves["A"]}
-            session.wl_um = curves["wl"]
-            session.clear_targets()
+            st.markdown('<div class="fs-opt-layer-table-marker"></div>', unsafe_allow_html=True)
+            expected_rows = len(materials)
+            cached_table = st.session_state.get(_LAYER_TABLE_KEY)
+            if hasattr(cached_table, "__len__") and len(cached_table) != expected_rows:
+                st.session_state.pop(_LAYER_TABLE_KEY, None)
+            edited_table = st.data_editor(
+                layer_table,
+                width="stretch",
+                hide_index=False,
+                disabled=["材料", "厚度 (μm)"],
+                column_config={
+                    "_idx": None,
+                    "厚度变化范围 (%)": st.column_config.NumberColumn(
+                        "厚度变化范围 (%)",
+                        min_value=0,
+                        max_value=100,
+                        step=1,
+                        format="%.0f",
+                        alignment="left",
+                    ),
+                },
+                key=_LAYER_TABLE_KEY,
+            )
+            if "_idx" in edited_table.columns:
+                valid_idx = edited_table["_idx"].isin(range(len(materials)))
+                edited_table = edited_table.loc[valid_idx]
+            session.layer_range_pct.update(
+                sync_layer_range_pct_from_table(edited_table, film_indices)
+            )
+        except Exception as exc:
+            st.warning(f"层表解析失败: {exc}")
 
         if session.optimizing and not any(session.touched.values()):
             session.optimizing = False
 
-        st.markdown('<div class="fs-opt-section-label">R / T / A vs λ（Freehand）</div>', unsafe_allow_html=True)
+        panel_head(
+            "R / T / A vs λ（Freehand）",
+            css_prefix="fs-opt",
+            help_text=FREEHAND_CHART_HELP_TEXT,
+        )
 
         component_args = session.to_component_args()
+        component_args["renderGen"] = int(st.session_state.get(_RENDER_GEN_KEY, 0))
         component_args["resetTargets"] = bool(
             st.session_state.pop("fs_opt_reset_component", False)
         )
@@ -439,7 +608,19 @@ def render_page(
             event, last_ts = consume_component_event(raw_event, last_ts)
             st.session_state[_LAST_EVENT_TS_KEY] = last_ts
             if event is not None:
-                needs_rerun = _process_component_event(session, event, db)
+                etype = event.get("type")
+                if etype in _VIEW_UI_EVENTS:
+                    _handle_component_event(session, event)
+                    _bump_render_gen()
+                    st.rerun()
+                else:
+                    needs_rerun = _process_component_event(
+                        session,
+                        event,
+                        db,
+                        film_indices=film_indices,
+                        thicknesses_um=thicknesses_um,
+                    )
 
         if needs_rerun:
             st.rerun()
@@ -448,12 +629,21 @@ def render_page(
         if opt_success:
             st.success(opt_success)
 
-        st.markdown("**优化后膜系指令**")
+        panel_head(
+            "优化后膜系指令",
+            css_prefix="fs-opt",
+            help_text=OPTIMIZED_FORMULA_HELP_TEXT,
+        )
         if session.last_optimized_formula:
+            st.markdown(
+                '<div class="fs-opt-optimized-formula-marker"></div>',
+                unsafe_allow_html=True,
+            )
             st.code(session.last_optimized_formula, language=None)
         else:
             st.caption("完成一次 Freehand 优化后将在此显示膜系指令。")
-    elif build_clicked:
+    elif sim_clicked:
         pass
     else:
-        st.info("输入膜系公式并点击「构建」以开始 Freehand 优化。")
+        # st.info("输入膜系公式并点击「仿真」以开始 Freehand 优化。")
+        pass

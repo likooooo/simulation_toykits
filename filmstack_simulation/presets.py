@@ -1,13 +1,64 @@
-"""Predefined filmstack formulas aligned with TMM / Oghma sources."""
+"""Filmstack preset types and formula builders (host supplies PresetCatalog)."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Literal
+from typing import Any, Callable, Dict, List, Literal, Mapping
 
 from filmstack_simulation.simulation import nk_at_wavelength
 
 CUSTOM_PRESET_ID = "custom"
+
+
+def format_thickness_um(thickness_um: float) -> str:
+    t = float(thickness_um)
+    if t == 0.0:
+        return "0"
+    if abs(t) >= 0.01:
+        return f"{t:.5f}".rstrip("0").rstrip(".")
+    return f"{t:.8f}".rstrip("0").rstrip(".") or "0"
+
+
+def layer_token_from_parts(
+    material: str,
+    thickness_um: float,
+    *,
+    inline_n: float | None = None,
+    inline_k: float | None = None,
+) -> str:
+    token = f"{material} {format_thickness_um(thickness_um)}"
+    if inline_n is not None:
+        k = inline_k if inline_k is not None else 0.0
+        token += f" {inline_n} {k}"
+    return token
+
+
+def layer_token_from_material(
+    material: Any,
+    thickness_um: float,
+    materials_db: Mapping[str, Any] | None,
+    *,
+    material_name: str,
+    wl_ref_um: float,
+    nk_at_wavelength=nk_at_wavelength,
+) -> str:
+    token = f"{material_name} {format_thickness_um(float(thickness_um))}"
+    if _needs_inline_nk(material, materials_db, material_name):
+        nk = nk_at_wavelength(material, wl_ref_um)
+        token += f" {float(nk.real):g} {float(nk.imag):g}"
+    return token
+
+
+def _needs_inline_nk(material: Any, materials_db: Mapping[str, Any] | None, material_name: str) -> bool:
+    if not materials_db:
+        return True
+    db_mat = materials_db.get(material_name)
+    if db_mat is not None and db_mat is material:
+        return False
+    for obj in materials_db.values():
+        if obj is material:
+            return False
+    return True
 
 QwRule = Literal["quarter", "fixed"]
 
@@ -32,15 +83,39 @@ class FilmstackPreset:
     custom_builder: PresetBuilder | None = None
 
 
-def _fmt_thickness(t_um: float) -> str:
-    return f"{t_um:.5f}"
+@dataclass(frozen=True)
+class PresetCatalog:
+    presets: tuple[FilmstackPreset, ...]
+    default_preset_id: str
+
+    @property
+    def preset_by_id(self) -> Dict[str, FilmstackPreset]:
+        return {p.id: p for p in self.presets}
+
+    @property
+    def preset_select_options(self) -> list[tuple[str, str]]:
+        return [(CUSTOM_PRESET_ID, "自定义")] + [(p.id, p.label) for p in self.presets]
+
+    @property
+    def preset_ids(self) -> tuple[str, ...]:
+        return tuple(pid for pid, _ in self.preset_select_options)
+
+    @property
+    def preset_labels(self) -> dict[str, str]:
+        return dict(self.preset_select_options)
+
+    @property
+    def valid_preset_ids(self) -> frozenset[str]:
+        return frozenset(self.preset_ids)
 
 
 def _layer_token(layer: PresetLayer, thickness_um: float) -> str:
-    if layer.inline_n is not None:
-        k = layer.inline_k if layer.inline_k is not None else 0.0
-        return f"{layer.material} {_fmt_thickness(thickness_um)} {layer.inline_n} {k}"
-    return f"{layer.material} {_fmt_thickness(thickness_um)}"
+    return layer_token_from_parts(
+        layer.material,
+        thickness_um,
+        inline_n=layer.inline_n,
+        inline_k=layer.inline_k,
+    )
 
 
 def _qw_thickness_um(wl_mid_um: float, n_real: float) -> float:
@@ -113,133 +188,15 @@ def get_wl_mid_um(
     return fallback_um
 
 
-_BRAGG_PERIOD_UM = 0.209
-_BRAGG_H_N = 1.5
-
-
-def _build_bragg_formula(wl_mid_um: float, materials_db: Dict[str, Any]) -> str:
-    del materials_db
-    t_h = _qw_thickness_um(wl_mid_um, _BRAGG_H_N)
-    t_l = _BRAGG_PERIOD_UM - t_h
-    if t_l <= 0.0:
-        raise ValueError("Bragg 周期内低折射率层厚度 ≤ 0，请调整波长或材料。")
-    inner = f"H {_fmt_thickness(t_h)} {_BRAGG_H_N} 0.0 air {_fmt_thickness(t_l)}"
-    return f"air 0.00000 ({inner})^30 Si 0.00000"
-
-
-# --- preset definitions (audit §2) ---
-
-_AR_QW_SI = FilmstackPreset(
-    id="ar_qw_si",
-    label="减反膜系",
-    period_repeat=(1, 3, 2),
-    layers=(
-        PresetLayer("air", 0.0),
-        PresetLayer("SiO2", qw_rule="quarter"),
-        PresetLayer("Ta2O5", qw_rule="quarter"),
-        PresetLayer("Si", 0.0),
-    ),
-)
-
-_BRAGG_MIRROR = FilmstackPreset(
-    id="bragg_mirror",
-    label="布拉格反射镜",
-    custom_builder=_build_bragg_formula,
-)
-
-_OPTICAL_FILTER = FilmstackPreset(
-    id="optical_filter",
-    label="光学滤光片",
-    period_repeat=(2, 4, 5),
-    layers=(
-        PresetLayer("air", 0.0),
-        PresetLayer("air", 0.1),
-        PresetLayer("H", 0.083, inline_n=1.5, inline_k=0.0),
-        PresetLayer("L", 0.126, inline_n=1.5, inline_k=0.0),
-        PresetLayer("Exit", 0.126, inline_n=1.0, inline_k=0.0),
-        PresetLayer("Si", 0.0),
-    ),
-)
-
-_FABRY_PEROT = FilmstackPreset(
-    id="fabry_perot",
-    label="FP 共振腔",
-    layers=(
-        PresetLayer("air", 0.0),
-        PresetLayer("Mirror", 0.01, inline_n=3.0, inline_k=0.0),
-        PresetLayer("air", 0.25),
-        PresetLayer("Mirror", 0.01, inline_n=3.0, inline_k=0.0),
-        PresetLayer("Si", 0.0),
-    ),
-)
-
-_OLED_ITO_AL = FilmstackPreset(
-    id="oled_ito_al",
-    label="OLED 栈",
-    layers=(
-        PresetLayer("ito", 0.0),
-        PresetLayer("ito", 0.15),
-        PresetLayer("NPD", 0.04),
-        PresetLayer("Alq3", 0.03),
-        PresetLayer("TPBi", 0.03),
-        PresetLayer("LiF", 0.01),
-        PresetLayer("std", 0.05),
-        PresetLayer("std", 0.0),
-    ),
-)
-
-_SPR_BK7_CR_AU = FilmstackPreset(
-    id="spr_bk7_cr_au",
-    label="SPR 金属膜",
-    layers=(
-        PresetLayer("BK7", 0.0, inline_n=1.517, inline_k=0.0),
-        PresetLayer("Cr", 0.005, inline_n=3.719, inline_k=4.362),
-        PresetLayer("Au", 0.03, inline_n=0.130, inline_k=3.162),
-        PresetLayer("air", 0.0, inline_n=1.0, inline_k=0.0),
-    ),
-)
-
-_PAPER_SIO2_SI = FilmstackPreset(
-    id="paper_sio2_si",
-    label="椭偏基准",
-    layers=(
-        PresetLayer("air", 0.0, inline_n=1.0, inline_k=0.0),
-        PresetLayer("SiO2", 0.05, inline_n=1.46, inline_k=0.0),
-        PresetLayer("Si", 0.0, inline_n=3.87, inline_k=0.02),
-    ),
-)
-
-PRESETS: tuple[FilmstackPreset, ...] = (
-    _AR_QW_SI,
-    _BRAGG_MIRROR,
-    _OPTICAL_FILTER,
-    _FABRY_PEROT,
-    _OLED_ITO_AL,
-    _SPR_BK7_CR_AU,
-    _PAPER_SIO2_SI,
-)
-
-PRESET_BY_ID: Dict[str, FilmstackPreset] = {p.id: p for p in PRESETS}
-
-PRESET_SELECT_OPTIONS: list[tuple[str, str]] = [
-    (CUSTOM_PRESET_ID, "自定义"),
-] + [(p.id, p.label) for p in PRESETS]
-
-PRESET_IDS: list[str] = [pid for pid, _ in PRESET_SELECT_OPTIONS]
-VALID_PRESET_IDS: frozenset[str] = frozenset(PRESET_IDS)
-PRESET_LABELS: dict[str, str] = dict(PRESET_SELECT_OPTIONS)
-
-DEFAULT_PRESET_ID = "ar_qw_si"
-
-
 def build_formula_for_preset(
     preset_id: str,
+    catalog: PresetCatalog,
     materials_db: Dict[str, Any],
     wl_mid_um: float,
 ) -> str:
     if preset_id == CUSTOM_PRESET_ID:
         raise ValueError("自定义预设无默认公式")
-    preset = PRESET_BY_ID.get(preset_id)
+    preset = catalog.preset_by_id.get(preset_id)
     if preset is None:
         raise ValueError(f"未知预设: {preset_id}")
     if preset.custom_builder is not None:

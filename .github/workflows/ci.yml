@@ -13,6 +13,7 @@ jobs:
 
     steps:
       - name: Install SSH Key
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.MY_PRIVATE_KEY_1 }}
@@ -28,7 +29,7 @@ jobs:
       - name: Verify submodule checkout
         run: |
           test -f simulation_core/3rdparty/infrastructure/CMakeLists.txt
-          test -d simulation_core/assets/database/materials
+          test -d simulation_core/assets/database/oghma_database/materials
 
       - name: Verify Hugging Face SSH access
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
@@ -78,40 +79,28 @@ jobs:
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install --no-cache-dir -r requirements.txt
 
-      - name: Configure and build (Release, minimal)
-        working-directory: simulation_core
-        run: |
-          source 3rdparty/infrastructure/scripts/init-inf-build-env.sh
-          source ../.venv/bin/activate
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build -j"$(nproc)" --target simulation test_diffraction
-
-      - name: Collect runtime artifacts to .simulation_core
-        working-directory: simulation_core
-        run: |
-          source ../.venv/bin/activate
-          python scripts/collect_simulation.py -b build -o ../.simulation_core
-          cp build/test_diffraction ../.simulation_core/
-          test -d ../.simulation_core/simulation_plugins
-          test -f ../.simulation_core/simulation_plugins/filmstack_visualizer.py
-          test -f ../.simulation_core/simulation_plugins/simulation_paths.py
-
-      - name: Smoke import simulation.so
+      - name: Build and collect runtime artifacts
         run: |
           source .venv/bin/activate
           source scripts/init-toykits-build-env.sh
+          python scripts/build_toykits.py
+          test -d .simulation_core/assets/database/oghma_database/materials
+          test -f .simulation_core/simulation.so
+          test -d .simulation_core/simulation_plugins
+          test -f .simulation_core/simulation_plugins/filmstack_visualizer.py
+          test -f .simulation_core/simulation_plugins/simulation_paths.py
+
+      - name: Verify runtime and run tests
+        run: |
+          source .venv/bin/activate
+          source scripts/init-toykits-build-env.sh
+          test -d "${SIMULATION_DATABASE_DIR}/oghma_database/materials"
           cd "${{ github.workspace }}"
           python -c "
           import simulation
           import filmstack_visualizer
           print('OK')
           "
-
-      - name: Run tests
-        run: |
-          source .venv/bin/activate
-          source scripts/init-toykits-build-env.sh
-          cd "${{ github.workspace }}"
           python scripts/check_import_contract.py
           python -m pytest test/ -v --tb=short
           python -m pytest simulation_core/tests/test_gen_sweep_table.py -q --tb=short
@@ -129,4 +118,5 @@ jobs:
             https://raw.githubusercontent.com/huggingface/xet-core/refs/heads/main/git_xet/install.sh | sh
           git xet install
           source .venv/bin/activate
-          python scripts/deploy.py hf
+          source scripts/init-toykits-build-env.sh
+          python scripts/build_toykits.py hf

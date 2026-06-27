@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="panel.css" />
+</head>
+<body>
+  <div id="section-header" class="panel-section-header">
+    <div class="panel-header-left">
+      <span id="section-title" class="panel-section-title"></span>
+      <span id="section-help" class="help-icon hidden">?</span>
+      <div id="section-link-wrap" class="hidden">
+        <a id="section-link" class="section-docs-link" href="#" target="_blank" rel="noopener">— 📖 使用说明</a>
+      </div>
+    </div>
+  </div>
+  <div id="help-tooltip" class="help-tooltip hidden" role="tooltip"></div>
+  <script src="./streamlit-component-lib.js"></script>
+  <script src="./main.js"></script>
+</body>
+</html>

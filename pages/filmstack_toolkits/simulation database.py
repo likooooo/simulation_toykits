@@ -1,3 +1,4 @@
+from common import HOST_DESIGN_TOKENS_PATH
 from simulation_database.page import render_page
 
-render_page()
+render_page(tokens_path=HOST_DESIGN_TOKENS_PATH)

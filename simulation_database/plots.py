@@ -72,7 +72,7 @@ def apply_plotly_theme(fig: "go.Figure", height: int = 420) -> "go.Figure":
     return fig
 
 
-_SIM_WL_MARKER_LINE = dict(color="rgba(107, 114, 128, 0.85)", width=1.5, dash="dash")
+_SIM_WL_MARKER_LINE = dict(color=COLORS["text"], width=2.5, dash="dash")
 
 
 def _apply_sim_wl_markers(
@@ -86,17 +86,17 @@ def _apply_sim_wl_markers(
         return
     data_min = float(np.min(wl_arr))
     data_max = float(np.max(wl_arr))
-    x_min = data_min
-    x_max = data_max
+    wl_min = data_min
+    wl_max = data_max
     markers: list[float] = []
     if sim_wl_from is not None:
         markers.append(float(sim_wl_from))
     if sim_wl_to is not None:
         markers.append(float(sim_wl_to))
     if markers:
-        x_min = min(x_min, min(markers))
-        x_max = max(x_max, max(markers))
-    fig.update_xaxes(range=[x_min, x_max])
+        wl_min = min(wl_min, min(markers))
+        wl_max = max(wl_max, max(markers))
+    fig.update_xaxes(range=[wl_min * 0.9, wl_max * 1.1])
     for x_val in markers:
         fig.add_shape(
             type="line",
@@ -107,7 +107,7 @@ def _apply_sim_wl_markers(
             y0=0,
             y1=1,
             line=dict(_SIM_WL_MARKER_LINE),
-            layer="below",
+            layer="above",
         )
 
 

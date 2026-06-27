@@ -1,6 +1,6 @@
 # simulation_database
 
-仿真数据库 Streamlit 模块：浏览 materials/spectra、构建工作区、仿真波长范围、Plotly 预览。
+仿真数据库 Streamlit 模块：浏览 release 树（`oghma_database/materials`、`oghma_database/spectra` 等）、构建工作区、仿真波长范围、Plotly 预览。
 
 拷贝本目录及宿主自备的 `simulation.so` 与数据库数据，即可在其他 Streamlit 项目中复用。
 
@@ -35,7 +35,7 @@ flowchart TB
 
   subgraph Core["database_ui.py"]
     PH --> SEARCH[search_db_paths]
-    PH --> READ[read_leaf_at_path]
+    PH --> READ[read_at_query_path]
     BUILD --> TREE[build_tree_nodes_for_panel]
     SEARCH --> CPP
     READ --> CPP
@@ -43,7 +43,7 @@ flowchart TB
   end
 
   subgraph CPP["simulation.so C++ bindings"]
-    CPP[oghma_database query/read/dump]
+    CPP[simulation_database query/read/dump]
   end
 
   subgraph State["st.session_state"]
@@ -58,13 +58,13 @@ flowchart TB
 
 ## 状态与行为
 
-**Session**：`sim_workspace` / `sim_workspace_ui`（schema=3）、`sim_db_wl_from/to`、`_sim_db_ready` 等。
+**Session**：`sim_workspace` / `sim_workspace_ui`（schema=4）、`sim_db_wl_from/to`、`_sim_db_ready` 等。
 
 **浏览**：树/搜索互斥（搜索 300ms debounce）；leaf 单击 preview、双击 add；卡片 focus/remove；清空 reset 工作区。
 
 **预览**：数据源优先级 preview > focus > last_added > 末项。用户改仿真波长后进入 manual 模式；范围不足时卡片 warn。
 
-**下载**：开启 download 后 add/focus 触发 C++ `obj.dump` → CSV 下载。
+**下载**：开启 download 后 add/focus 触发 C++ `obj.dump` → CSV 本地导出（非在线拉取材料库）。
 
 **去重**：双 panel 取 ts 最大；priority add(5) > focus(4) > remove/clear(3) > preview(1)；前端 add/focus 限流 400ms/350ms。
 
@@ -84,12 +84,11 @@ flowchart TB
 ## C++ 调用链
 
 ```
-ensure_simulation_database_initialized()
-  → simulation_database_parser.get_simulation_database(init=True)
+simulation_database_parser.get_simulation_database(init=True)
 
-build_tree_nodes_for_panel → oghma.query / descend
-read_leaf_at_path          → walk_query_path → read
-search_db_paths            → Python DFS
+build_tree_nodes_for_panel → sim_db.query / descend
+read_at_query_path         → sdp.read_at_query_path (db.read_at_path)
+search_db_paths            → Python DFS + infer_yml_leaf_kind（无 C++ 对象 load）
 material_nk_arrays         → get_tabulated_values()
 dump_object_as_csv         → obj.dump(tmpdir)
 ```
@@ -100,7 +99,7 @@ dump_object_as_csv         → obj.dump(tmpdir)
 |----|------|
 | `simulation.so` + 依赖 `.so` | `SIMULATION_ARTIFACTS_DIR` |
 | `simulation_plugins/simulation_database_parser.py` | artifacts 目录内；C++ 经插件名调用 |
-| 数据库数据 | `SIMULATION_DATABASE_DIR` → materials/spectra |
+| 数据库数据 | `SIMULATION_DATABASE_DIR` → release 树（如 `oghma_database/materials/`、`oghma_database/spectra/`、`refractive_index_info_database/materials/refractive_index_info/` 等） |
 | Python | `streamlit`, `plotly`, `numpy`, `pyyaml` |
 
 ## 集成指南
@@ -108,31 +107,34 @@ dump_object_as_csv         → obj.dump(tmpdir)
 运行前 `source scripts/init-toykits-build-env.sh`（或宿主等价 init 脚本）。环境变量细节见 [simulation_toykits_deploy.md](../scripts/simulation_toykits_deploy.md) §3.3。
 
 ```python
-import streamlit as st
+from pathlib import Path
 
-from simulation_database.database_ui import prepare_simulation_database
+import streamlit as st
+import simulation_database_parser as sdp
+
 from simulation_database.page import render_page
 
 if "_sim_db_ready" not in st.session_state:
-    prepare_simulation_database()
+    sdp.get_simulation_database(init=True)
     st.session_state["_sim_db_ready"] = True
 
-render_page()
+render_page(tokens_path=Path("ui/design_tokens.css"))
 ```
 
 | 变量 | 默认 | 说明 |
 |------|------|------|
 | `SIMULATION_ARTIFACTS_DIR` | `{repo}/.simulation_core` | `simulation.so` 目录 |
-| `SIMULATION_DATABASE_DIR` | `{simulation_core}/assets/database` | 数据库根 |
+| `SIMULATION_DATABASE_DIR` | collect 后 `{repo}/.simulation_core/assets/database`；开发/构建可用源码树 `simulation_core/assets/database` | release 树根（非 import） |
 | `SIMULATION_TMM_ASSETS_DIR` | `{simulation_core}/assets/ipynb/simulation/TMM` | TMM 资源 |
 | `PYTHONPATH` | `{repo}:{artifacts}` | init 脚本设置 |
 
-**默认工作区**：`render_page()` 调用 `ensure_workspace_initialized(sim_db)`，预加载 AM1.5G 光谱；材料须用户手动 add。Filmstack 预设可传入 `material_path_keys`（见 `filmstack_simulation.materials.DEFAULT_MATERIAL_PATH_KEYS`）。
+**默认工作区**：standalone 模式下 `render_page()` 调用 `ensure_workspace_initialized(sim_db)` 时不传入 path keys，工作区初始为空；材料与光谱须用户手动 add。**simulation_toykits 宿主**在 `app.py` 启动时预加载 `DEFAULT_MATERIAL_PATH_KEYS` 与 [`toykits_config.DEFAULT_SPECTRUM_PATH`](../toykits_config.py)（AM1.5G）光谱。
 
 **公开 API**：
 
-- `simulation_database.page.render_page()`
-- `simulation_database.database_ui.prepare_simulation_database()` / `ensure_simulation_database_initialized()` / `material_nk_arrays()` / `search_material_paths()`
+- `simulation_database.page.render_page(*, tokens_path: Path)`
+- `simulation_database_parser.get_simulation_database()` / `materials_db_from_token_paths()`
+- `simulation_database.database_ui.material_nk_arrays()` / `search_material_paths()`
 - `simulation_database.workspace.ensure_sim_workspace()` / `get_workspace_materials()` / `ensure_workspace_initialized()` / `ensure_sim_workspace_ui()`
 
 ## 模块结构
@@ -144,5 +146,4 @@ render_page()
 | `database_ui.py` | DB 读写/搜索 |
 | `workspace.py` | 工作区会话 |
 | `plots.py` | Plotly 图表 |
-| `design_tokens.css` | 设计 token |
-| `pages/filmstack_toolkits/simulation database.py` | toykits 多页 wrapper |
+| `pages/filmstack_toolkits/simulation database.py` | toykits 多页 wrapper（传入 `tokens_path`） |

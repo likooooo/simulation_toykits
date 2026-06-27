@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
+
+import math
 
 import numpy as np
-
-from filmstack_simulation.materials import RECOMMENDED_SIM_WL_FROM_UM, RECOMMENDED_SIM_WL_TO_UM
 
 METRICS = ("R", "T", "A")
 Y_PERCENT_CAP = 100.0
@@ -19,14 +19,14 @@ def auto_y_max_percent(*series: np.ndarray | None) -> float:
         (float(np.max(s)) for s in series if s is not None and s.size),
         default=0.0,
     )
-    return max(min(max_val * 100.0 * 1.2, Y_PERCENT_CAP), Y_PERCENT_FLOOR)
+    return max(min(math.ceil(max_val * 100.0), Y_PERCENT_CAP), Y_PERCENT_FLOOR)
 
 
 def auto_y_min_percent(*series: np.ndarray | None) -> float:
     mins = [float(np.min(s)) for s in series if s is not None and s.size]
     if not mins:
         return 0.0
-    return max(0.0, min(mins) * 100.0 * 0.8)
+    return max(0.0, math.floor(min(mins) * 100.0))
 
 
 def default_view_domain(
@@ -99,9 +99,10 @@ class FreehandSession:
     wl_um: np.ndarray = field(default_factory=lambda: np.array([]))
     angle_deg: float = 0.0
     polarization: str = "UNPOLARIZED"
-    wl_from: float = RECOMMENDED_SIM_WL_FROM_UM
-    wl_to: float = RECOMMENDED_SIM_WL_TO_UM
+    wl_from: float = 0.38
+    wl_to: float = 0.78
     current: dict[str, np.ndarray] = field(default_factory=dict)
+    pre_optimize_current: dict[str, np.ndarray] | None = None
     target: dict[str, np.ndarray | None] = field(default_factory=lambda: {m: None for m in METRICS})
     touched: dict[str, bool] = field(default_factory=lambda: {m: False for m in METRICS})
     active_metric: str = "R"
@@ -111,6 +112,7 @@ class FreehandSession:
     edit_wl_indices: dict[str, set[int]] = field(
         default_factory=lambda: {m: set() for m in METRICS}
     )
+    layer_range_pct: dict[int, float] = field(default_factory=dict)
     built: bool = False
     optimizing: bool = False
 
@@ -130,6 +132,8 @@ class FreehandSession:
         wl_from: float,
         wl_to: float,
         polarization: str = "UNPOLARIZED",
+        film_indices: Sequence[int] | None = None,
+        default_range_pct: float = 30.0,
     ) -> None:
         self.working_formula = formula
         self.baseline_formula = formula
@@ -141,10 +145,13 @@ class FreehandSession:
         self.wl_from = float(wl_from)
         self.wl_to = float(wl_to)
         self.current = {k: np.asarray(v, dtype=float) for k, v in current.items()}
+        self.pre_optimize_current = None
         self.clear_targets()
         self.last_merit_history = None
         self.last_merit_initial = None
         self.view_domain = default_view_domain(wl_from, wl_to, current=current)
+        default_pct = float(default_range_pct)
+        self.layer_range_pct = {int(idx): default_pct for idx in (film_indices or [])}
         self.built = True
         self.optimizing = False
 
@@ -157,8 +164,9 @@ class FreehandSession:
                 x = [float(self.wl_from), float(self.wl_to)]
             else:
                 x = dom.get("x") or [float(self.wl_from), float(self.wl_to)]
-            y_lo = auto_y_min_percent(self.current.get(m), self.target.get(m))
-            y_hi = auto_y_max_percent(self.current.get(m), self.target.get(m))
+            pre = self.pre_optimize_current.get(m) if self.pre_optimize_current else None
+            y_lo = auto_y_min_percent(self.current.get(m), self.target.get(m), pre)
+            y_hi = auto_y_max_percent(self.current.get(m), self.target.get(m), pre)
             self.view_domain[m] = {
                 "x": [float(x[0]), float(x[1])],
                 "y": [y_lo, y_hi],
@@ -172,11 +180,16 @@ class FreehandSession:
         current: dict[str, np.ndarray],
         merit_history: list[float],
         merit_initial: float | None = None,
+        pre_optimize_current: dict[str, np.ndarray] | None = None,
     ) -> None:
         self.working_formula = formula
         self.last_optimized_formula = formula
         self.opt_round += 1
         self.current = {k: np.asarray(v, dtype=float) for k, v in current.items()}
+        if pre_optimize_current is not None:
+            self.pre_optimize_current = {
+                k: np.asarray(v, dtype=float) for k, v in pre_optimize_current.items()
+            }
         self.last_merit_history = list(merit_history)
         self.last_merit_initial = float(merit_initial) if merit_initial is not None else None
         self.clear_targets()
@@ -196,4 +209,13 @@ class FreehandSession:
             "viewDomain": self.view_domain,
             "optimizing": self.optimizing,
             "meritHistory": self.last_merit_history,
+            "preOptimizeCurrent": (
+                {
+                    m: self.pre_optimize_current[m].tolist()
+                    for m in METRICS
+                    if m in self.pre_optimize_current
+                }
+                if self.pre_optimize_current
+                else None
+            ),
         }

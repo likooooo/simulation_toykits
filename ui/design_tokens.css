@@ -1,4 +1,4 @@
-/* Canonical source: ui/design_tokens.css — keep package copies in sync manually. */
+/* Design tokens for simulation_toykits Streamlit pages and custom components. */
 :root {
   --color-bg: #FAFAFA;
   --color-surface: #FFFFFF;

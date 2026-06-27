@@ -40,7 +40,7 @@
 
 - **TMM**：`layers_from_formula` → `build_tmm_layers`（幂等）→ R/T
 - **结构图**：同上 → `plot_filmstack(layers)`；输出由 `SAVE_TO_FILE` 控制（`viz_io.save_or_show_fig`）
-- **优化**：`stack_from_formula(formula, materials_db)` 复用上述 bookend；`materials_db` 为 ridb 路径或运行时 `material_s` 字典
+- **优化**：`stack_from_formula(formula, materials_db)` 复用上述 bookend；`materials_db` 为运行时 `material_s` 字典，或配置 query path 经 `materials_db_from_token_paths` → `read_at_query_path` 加载
 
 ---
 
@@ -58,7 +58,7 @@
 | `spr_bk7_cr_au` | SPR 金属膜 | 全 inline nk |
 | `paper_sio2_si` | 椭偏基准 | 全 inline nk |
 
-**工作区材料**：Simulation Database 页默认仅预加载 AM1.5G 光谱；Filmstack 预设所需材料须手动加入工作区，或宿主在 `ensure_workspace_initialized(..., material_path_keys=...)` 中传入 [`DEFAULT_MATERIAL_PATH_KEYS`](../filmstack_simulation/materials.py)。推荐路径列表与 preset 说明见 [`filmstack_simulation/README.md`](../filmstack_simulation/README.md)。
+**工作区材料**：Simulation Database 页 standalone 模式下工作区初始为空；Filmstack 预设所需材料须手动加入工作区，或宿主在 `ensure_workspace_initialized(..., material_path_keys=..., spectrum_path_keys=...)` 中传入 [`DEFAULT_MATERIAL_PATH_KEYS`](../toykits_config.py) 与 [`DEFAULT_SPECTRUM_PATH`](../toykits_config.py)（simulation_toykits 的 `app.py` 启动时自动预加载）。推荐路径列表与 preset 说明见 [`filmstack_simulation/README.md`](../filmstack_simulation/README.md)。
 
 ---
 

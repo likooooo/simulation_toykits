@@ -11,16 +11,17 @@ from typing import Any, Literal
 import streamlit as st
 import streamlit.components.v1 as components
 
+import simulation_database_parser as sdp
+
 from simulation_database.database_ui import (
     build_tree_nodes_for_panel,
     dump_object_as_csv,
-    ensure_simulation_database_initialized,
+    infer_leaf_kind,
     material_nk_arrays,
     material_variant_label,
     object_catalog_name,
     object_unique_name,
     path_id,
-    read_leaf_at_path,
     search_db_paths,
     spectrum_arrays,
 )
@@ -48,18 +49,16 @@ from simulation_database.workspace import (
 
 
 _COMPONENT_FRONTEND_DIR = str(Path(__file__).resolve().parent / "component" / "frontend")
-_TOKENS_PATH = Path(__file__).resolve().parent / "design_tokens.css"
 
 _component_func = components.declare_component("simulation_db_panel", path=_COMPONENT_FRONTEND_DIR)
 
 
-def inject_global_styles() -> None:
+def inject_global_styles(tokens_css: str) -> None:
     """Inject page CSS every rerun — Streamlit discards prior markdown on interaction."""
-    tokens = _TOKENS_PATH.read_text(encoding="utf-8")
     st.markdown(
         f"""
         <style>
-        {tokens}
+        {tokens_css}
         html {{ overflow-y: scroll !important; }}
         [data-testid="stAppViewBlockContainer"] {{
             padding-left: 1.5rem !important;
@@ -93,6 +92,7 @@ def simulation_db_panel(
     auto_download_filename: str | None = None,
     height: int = 520,
     section: Literal["browser", "workspace", "all"] = "all",
+    tokens_css: str = "",
     key: str | None = None,
 ) -> dict[str, Any] | None:
     """Render database panel; returns action dict or None."""
@@ -111,6 +111,7 @@ def simulation_db_panel(
         auto_download_filename=auto_download_filename or "",
         height=height,
         section=section,
+        tokens_css=tokens_css,
         key=key,
         default=None,
     )
@@ -128,9 +129,9 @@ class PanelActionResult:
     toast: str = ""
 
 
-def _load_presented(sim_db: Any, db_name: str, path_keys: list[str]) -> PresentedLeaf:
-    obj = read_leaf_at_path(sim_db, db_name, path_keys)
-    kind = "spectrum" if db_name == "spectra" else "material"
+def _load_presented(sim_db: Any, path_keys: list[str]) -> PresentedLeaf:
+    obj = sdp.read_at_query_path(sim_db, path_keys)
+    kind = infer_leaf_kind(obj)
     catalog = object_catalog_name(obj)
     unique = object_unique_name(obj)
     return PresentedLeaf(
@@ -138,7 +139,6 @@ def _load_presented(sim_db: Any, db_name: str, path_keys: list[str]) -> Presente
         obj=obj,
         breadcrumb=material_variant_label(obj) if kind == "material" else catalog,
         path_keys=list(path_keys),
-        db_name=db_name,
         catalog_name=catalog,
         unique_name=unique,
     )
@@ -176,7 +176,7 @@ def handle_panel_action(
 
     if act == "download_toggle":
         ui.download_on_action = bool(action.get("enabled", False))
-        result.status = "下载 CSV：已开启（双击加入时）" if ui.download_on_action else "下载 CSV：已关闭"
+        result.status = "下载 CSV：已开启（加入/双击卡片时）" if ui.download_on_action else "下载 CSV：已关闭"
         return result
 
     if act == "clear_workspace":
@@ -242,12 +242,11 @@ def handle_panel_action(
                     result.download_filename = zip_f
         return result
     elif act in ("preview", "add"):
-        db_name = action.get("db_name", "")
         path_keys = action.get("path_keys") or []
-        if not db_name or not path_keys:
+        if not path_keys:
             return result
         try:
-            presented = _load_presented(sim_db, db_name, path_keys)
+            presented = _load_presented(sim_db, path_keys)
         except Exception as exc:
             result.status = f"读取失败: {exc}"
             result.toast = result.status
@@ -292,7 +291,6 @@ def handle_panel_action(
 
 
 ROOT_BOOTSTRAP_DONE_KEY = "sim_db_roots_bootstrapped"
-ROOT_DATABASE_NAMES = ("materials", "spectra")
 
 PANEL_HEIGHT = 720
 
@@ -337,20 +335,20 @@ def _bootstrap_root_tree_expansion(sim_db, ws, ui) -> None:
         st.session_state[ROOT_BOOTSTRAP_DONE_KEY] = True
         return
 
-    pending: list[tuple[str, str]] = []
-    for db_name in ROOT_DATABASE_NAMES:
-        if db_name not in sim_db.database_names():
-            continue
-        root_id = path_id(db_name, [])
+    pending: list[tuple[str, list[str]]] = []
+    root_query = sim_db.query()
+    for key in root_query.keys:
+        path_keys = [key]
+        root_id = path_id(path_keys)
         if root_id not in ui.expanded_paths:
-            pending.append((root_id, db_name))
+            pending.append((root_id, path_keys))
 
     st.session_state[ROOT_BOOTSTRAP_DONE_KEY] = True
     if not pending:
         return
 
     ts = max(ui.panel_processed_ts, 0) + 1
-    for root_id, db_name in pending:
+    for root_id, path_keys in pending:
         _apply_panel_action(
             sim_db,
             ws,
@@ -358,8 +356,7 @@ def _bootstrap_root_tree_expansion(sim_db, ws, ui) -> None:
             {
                 "action": "expand",
                 "path_id": root_id,
-                "db_name": db_name,
-                "path_keys": [],
+                "path_keys": path_keys,
                 "ts": ts,
             },
         )
@@ -502,10 +499,11 @@ def _process_panel_actions(
         st.rerun(scope="app")
 
 
-def render_page() -> None:
+def render_page(*, tokens_path: Path) -> None:
     """Render the simulation database three-column page."""
+    tokens_css = tokens_path.read_text(encoding="utf-8")
     st.set_page_config(page_title="仿真数据库", layout="wide")
-    inject_global_styles()
+    inject_global_styles(tokens_css)
 
     st.markdown(
         """
@@ -592,7 +590,7 @@ def render_page() -> None:
         unsafe_allow_html=True,
     )
 
-    sim_db = ensure_simulation_database_initialized()
+    sim_db = sdp.get_simulation_database(init=True)
     ws, ui = ensure_workspace_initialized(sim_db)
     _bootstrap_root_tree_expansion(sim_db, ws, ui)
     sim_from, sim_to = _sync_sim_wl_state(ws, ui)
@@ -603,6 +601,7 @@ def render_page() -> None:
     col_browser, col_workspace, col_viz = st.columns(3, gap="small")
 
     _panel_kwargs = _build_panel_common(sim_db, ws, ui)
+    _panel_kwargs["tokens_css"] = tokens_css
 
     with col_browser:
         panel_action_browser = simulation_db_panel(
