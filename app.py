@@ -3,7 +3,10 @@ from pathlib import Path
 import re
 import simulation
 
-simulation.print_simulation_banner()
+# Streamlit 会在交互/切页/热重载时反复 rerun 脚本；这里保证每个会话只打印一次。
+if not st.session_state.get("_simulation_banner_printed", False):
+    simulation.print_simulation_banner()
+    st.session_state["_simulation_banner_printed"] = True
 
 from simulation_database.workspace import WORKSPACE_SCHEMA
 
