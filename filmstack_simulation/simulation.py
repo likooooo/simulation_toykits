@@ -137,13 +137,17 @@ def compute_spectral_map_2d(
     angles_deg = np.linspace(float(ang_from), float(ang_to), int(n_ang))
     layer_list = _layers_or_build(materials, thicknesses_um, layers)
     angles_rad = np.deg2rad(angles_deg)
+    incoherent = filmstack_visualizer.layers_has_incoherent(layer_list)
     r_s_2d, t_s_2d, r_p_2d, t_p_2d, coeff_r_s_2d, coeff_r_p_2d = grid_rt_polarized_power_maps(
         layer_list, wls, angles_rad
     )
     r_map, t_map = combine_polarization_rt(
         r_s_2d, t_s_2d, r_p_2d, t_p_2d, polarization
     )
-    psi_map, delta_map = _psi_delta_from_coeff_maps(coeff_r_s_2d, coeff_r_p_2d)
+    if incoherent:
+        psi_map, delta_map = None, None
+    else:
+        psi_map, delta_map = _psi_delta_from_coeff_maps(coeff_r_s_2d, coeff_r_p_2d)
     return {
         "wavelength_um": wls,
         "angle_deg": angles_deg,
@@ -162,7 +166,11 @@ def _slice_with_psi_delta(
     t_arr: np.ndarray,
     r_s: np.ndarray,
     r_p: np.ndarray,
+    *,
+    incoherent: bool = False,
 ) -> Dict[str, Any]:
+    if incoherent:
+        return {"x": x, "R": r_arr, "T": t_arr, "Psi": None, "Delta": None}
     psi_arr, delta_arr = _psi_delta_from_coeff_maps(r_s, r_p)
     return {"x": x, "R": r_arr, "T": t_arr, "Psi": psi_arr, "Delta": delta_arr}
 
@@ -180,11 +188,12 @@ def _compute_polarized_curve(
     from filmstack_simulation.sweep import grid_rt_polarized_and_coeff
 
     layer_list = _layers_or_build(materials, thicknesses_um, layers)
+    incoherent = filmstack_visualizer.layers_has_incoherent(layer_list)
     r_s, t_s, r_p, t_p, cr_s, _, cr_p, _ = grid_rt_polarized_and_coeff(
         layer_list, sweep_wls, sweep_angles
     )
     r_arr, t_arr = combine_polarization_rt(r_s, t_s, r_p, t_p, polarization)
-    return _slice_with_psi_delta(x, r_arr, t_arr, cr_s, cr_p)
+    return _slice_with_psi_delta(x, r_arr, t_arr, cr_s, cr_p, incoherent=incoherent)
 
 
 def compute_polarized_curve_at_wavelength(

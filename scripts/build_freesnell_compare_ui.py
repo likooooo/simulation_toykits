@@ -370,7 +370,7 @@ FREESNEL_COMPARE_SPECS: dict[str, CompareSpec] = {'fs_ag_mgo_3nm': {'granular_ir
  'fs_hdpe_pas_32': {'granular_ir': False,
                     'invoke': 'export/hdpe-pas-inc',
                     'png_dims': [425, 265],
-                    'quantity': 'T',
+                    'quantity': 'T_plus_half_R',
                     'quantity_col': 1,
                     'scm_file': 'polyethylene.scm',
                     'x_axis': 'wavenumber_cm'},
@@ -959,7 +959,7 @@ FREESNEL_CUSTOM_EXPORT_SCM = r""";;; --- custom single-stack exporters ---
   (plot-response (title "1x14 PE inc" "PE-1x14-inc")
     (samples 200) (range 0 1) (logarithmic 3e-6 15e-6) (incident 4 'T)
     (optical-stack (nominal 6.7e-6) (substrate 1)
-      (repeat 1 (layer* 1.0 1e-3) (layer* HDPE 14e-6))
+      (repeat 1 (layer* 1.0 1e-3) (layer HDPE 14e-6))
       (substrate 1))))
 (define (export-pe-2x14-co)
   (plot-response (title "2x14 PE co" "PE-2x14-co")
@@ -971,7 +971,7 @@ FREESNEL_CUSTOM_EXPORT_SCM = r""";;; --- custom single-stack exporters ---
   (plot-response (title "2x14 PE inc" "PE-2x14-inc")
     (samples 200) (range 0 1) (logarithmic 3e-6 15e-6) (incident 4 'T)
     (optical-stack (nominal 6.7e-6) (substrate 1)
-      (repeat 2 (layer* 1.0 1e-3) (layer* HDPE 14e-6))
+      (repeat 2 (layer* 1.0 1e-3) (layer HDPE 14e-6))
       (substrate 1))))
 (define (export-pe-3x14-co)
   (plot-response (title "3x14 PE co" "PE-3x14-co")
@@ -981,9 +981,9 @@ FREESNEL_CUSTOM_EXPORT_SCM = r""";;; --- custom single-stack exporters ---
       (substrate 1))))
 (define (export-pe-3x14-inc)
   (plot-response (title "3x14 PE inc" "PE-3x14-inc")
-    (samples 200) (range 0 1) (logarithmic 3e-6 15e-6) (incident 4 'T)
+    (samples 1200) (range 0 1) (logarithmic 3e-6 15e-6) (incident 4 'T)
     (optical-stack (nominal 6.7e-6) (substrate 1)
-      (repeat 3 (layer* 1.0 1e-3) (layer* HDPE 14e-6))
+      (repeat 3 (layer* 1.0 1e-3) (layer HDPE 14e-6))
       (substrate 1))))
 (define (export-cloud-h2o)
   (define cld01 (granular-IR h2o 1e-6 1))
@@ -1582,7 +1582,7 @@ def plot_compare_png(
 
 RMSE_WARN_THRESHOLD = 1e-4
 GRANULAR_NOTE = "掺杂模型"
-COMMENT_INCOHERENT = "暂不支持非相干模型"
+INCOHERENT_NOTE = "非相干模型"
 
 # FreeSnell export/cloud-* and export/ruby-* use layer* (opticompute.scm).
 
@@ -1685,19 +1685,32 @@ def _join_comment(*parts: str) -> str:
     return "；".join(items)
 
 
-def _specific_mismatch_comment(
+def _annotation_notes(
     template_id: str,
     spec: CompareSpec,
     label: str,
     template_json: dict[str, Any],
-) -> str:
+) -> list[str]:
+    notes: list[str] = []
+    if spec.get("granular_ir"):
+        notes.append(GRANULAR_NOTE)
     if is_incoherent_template(
         template_id,
         template_json=template_json,
         label=label,
         invoke=str(spec.get("invoke", "")),
     ):
-        return COMMENT_INCOHERENT
+        notes.append(INCOHERENT_NOTE)
+    return notes
+
+
+def _specific_mismatch_comment(
+    template_id: str,
+    spec: CompareSpec,
+    label: str,
+    template_json: dict[str, Any],
+) -> str:
+    del template_id, spec, label
     return _optical_thickness_comment(template_json)
 
 
@@ -1714,9 +1727,7 @@ def resolve_comment(
         if over_threshold
         else ""
     )
-    if spec.get("granular_ir"):
-        return _join_comment(GRANULAR_NOTE, specific)
-    return specific
+    return _join_comment(*_annotation_notes(template_id, spec, label, template_json), specific)
 
 
 def finalize_row_comment(
@@ -1732,7 +1743,16 @@ def finalize_row_comment(
         return
     over_threshold = rmse >= RMSE_WARN_THRESHOLD
     row["expected_mismatch"] = over_threshold
-    if over_threshold or spec.get("granular_ir"):
+    annotated = bool(
+        spec.get("granular_ir")
+        or is_incoherent_template(
+            template_id,
+            template_json=template_json,
+            label=label,
+            invoke=str(spec.get("invoke", "")),
+        )
+    )
+    if over_threshold or annotated:
         row["comment"] = resolve_comment(
             template_id, spec, label, template_json, over_threshold=over_threshold
         )
@@ -1775,7 +1795,7 @@ def write_static_site(
         label = html.escape(str(row.get("label", "")))
         if status != "ok":
             comment = html.escape(str(row.get("error", "")))
-        elif row.get("expected_mismatch") or row.get("granular_ir"):
+        elif row.get("expected_mismatch") or row.get("granular_ir") or row.get("incoherent"):
             comment = html.escape(str(row.get("comment", "")))
         else:
             comment = ""
@@ -1861,6 +1881,12 @@ def process_template(
         "id": template_id,
         "label": label,
         "granular_ir": bool(spec.get("granular_ir", False)),
+        "incoherent": is_incoherent_template(
+            template_id,
+            template_json=template_json,
+            label=label,
+            invoke=str(spec.get("invoke", "")),
+        ),
         "status": "ok",
     }
     try:

@@ -18,7 +18,7 @@ from filmstack_simulation.page_widgets import (
 from filmstack_simulation.presets import CUSTOM_PRESET_ID
 from filmstack_simulation.template_types import FilmstackSimParams
 from template_config import (
-    INCOHERENT_TEMPLATE_IDS,
+    incoherent_template_ids,
     load_all_templates,
     load_templates_json,
     polarization_from_quantity,
@@ -158,12 +158,12 @@ def test_ui_sweep_matches_run_toykits(
     compare_specs,
     fs_templates_json,
 ) -> None:
-    if template_id in INCOHERENT_TEMPLATE_IDS:
-        pytest.skip("incoherent template")
     spec = compare_specs[template_id]
     if spec.get("granular_ir"):
         pytest.skip("granular IR expected mismatch")
     if spec["quantity"] == "neg_log_T":
+        pytest.skip("non RT quantity")
+    if spec["quantity"] == "T_plus_half_R":
         pytest.skip("non RT quantity")
 
     json_tpl = fs_templates_json[template_id]
@@ -185,3 +185,47 @@ def test_ui_sweep_matches_run_toykits(
 
     rmse = float(np.sqrt(np.mean((toykits_y_wl - toykits_y) ** 2)))
     assert rmse < 1e-9, f"{template_id} rmse={rmse}"
+
+
+def _non_granular_incoherent_template_ids(compare_specs) -> list[str]:
+    return sorted(
+        tid
+        for tid in incoherent_template_ids()
+        if tid in compare_specs and not compare_specs[tid].get("granular_ir")
+    )
+
+
+@pytest.mark.parametrize(
+    "template_id",
+    _non_granular_incoherent_template_ids(FREESNEL_COMPARE_SPECS)
+    if FREESNEL_COMPARE_SPECS
+    else [],
+)
+def test_incoherent_template_formula_has_star_and_sweep_runs(
+    template_id: str,
+    simulation,
+    compare_specs,
+    fs_templates_json,
+) -> None:
+    spec = compare_specs[template_id]
+    qty = spec["quantity"]
+    if qty in ("neg_log_T", "T_plus_half_R"):
+        pytest.skip(f"quantity {qty} covered elsewhere")
+
+    json_tpl = fs_templates_json[template_id]
+    formula = str((json_tpl.get("stack") or {}).get("formula") or "")
+    assert "*" in formula, f"{template_id} incoherent formula missing * thickness marker"
+
+    from scripts.build_freesnell_compare_ui import run_toykits
+
+    sim = json_tpl["sim"]
+    x_axis = spec["x_axis"]
+    if x_axis not in ("wavelength_um", "log_wavelength_um"):
+        pytest.skip(f"x_axis {x_axis} covered by compare export axis tests")
+
+    wl_from = float(sim["wl_from_um"])
+    wl_to = float(sim["wl_to_um"])
+    x_display = np.linspace(wl_from, wl_to, 16)
+    y = run_toykits(template_id, spec, json_tpl, x_display, x_axis)
+    assert np.all(np.isfinite(y)), f"{template_id} non-finite sweep values"
+    assert y.shape == x_display.shape
