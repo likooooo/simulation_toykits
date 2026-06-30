@@ -18,21 +18,8 @@ __all__ = [
 ]
 
 
-def object_catalog_name(obj: Any) -> str:
-    return str(obj.catalog_name())
-
-
 def object_unique_name(obj: Any) -> str:
     return str(obj.unique_name())
-
-
-def material_variant_label(obj: Any) -> str:
-    catalog = object_catalog_name(obj)
-    unique = object_unique_name(obj)
-    prefix = catalog + "("
-    if unique.startswith(prefix) and unique.endswith(")"):
-        return unique[len(prefix) : -1]
-    return unique
 
 
 def _wl_range_from_array(wl: np.ndarray) -> tuple[float, float] | None:
@@ -123,18 +110,56 @@ def _iter_matching_leaf_paths(
     return matches
 
 
+def _search_result_from_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "path_keys": list(entry["path_keys"]),
+        "path_id": entry["path_id"],
+        "leaf_type": entry["leaf_type"],
+        "label": entry["label"],
+    }
+
+
+def _search_precompiled_entries(
+    sim_db: Any,
+    query: str,
+    *,
+    max_results: int | None = None,
+    material_only: bool = False,
+) -> list[dict[str, Any]] | None:
+    from simulation_database.database_precompiling import candidate_entry_indices
+
+    precompiled = _active_precompiled_index(sim_db)
+    if precompiled is None:
+        return None
+    key = (query or "").strip()
+    if not key:
+        return []
+    q_lower = key.lower()
+    candidate_indices = candidate_entry_indices(
+        precompiled.inverted_index,
+        key,
+        entry_count=len(precompiled.entries),
+    )
+    if candidate_indices is None:
+        candidate_indices = list(range(len(precompiled.entries)))
+    matches: list[dict[str, Any]] = []
+    for index in candidate_indices:
+        entry = precompiled.entries[index]
+        if material_only and not entry.get("is_material_path"):
+            continue
+        blob = entry.get("search_blob_lower", "")
+        if q_lower not in blob:
+            continue
+        matches.append(_search_result_from_entry(entry))
+        if max_results is not None and len(matches) >= max_results:
+            break
+    return matches
+
+
 def search_material_paths(sim_db: Any, material_name: str) -> list[list[str]]:
     """Search material leaves; ``materials`` in path_keys is a navigation scope filter, not YAML leaf typing."""
-
-    def _is_material_path(path_keys: list[str]) -> bool:
-        return "materials" in path_keys
-
-    return _iter_matching_leaf_paths(
-        sim_db,
-        material_name,
-        match_blob=breadcrumb_for,
-        path_filter=_is_material_path,
-    )
+    cached = _search_precompiled_entries(sim_db, material_name, material_only=True)
+    return [list(entry["path_keys"]) for entry in (cached or [])]
 
 
 def path_id(path_keys: list[str]) -> str:
@@ -145,17 +170,32 @@ def breadcrumb_for(path_keys: list[str]) -> str:
     return " > ".join(path_keys)
 
 
+def _active_precompiled_index(sim_db: Any) -> Any | None:
+    from simulation_database.database_precompiling import PrecompiledIndex, get_active_index
+
+    index = get_active_index()
+    if index is None or not isinstance(index, PrecompiledIndex):
+        return None
+    return index
+
+
 def leaf_type_for_path(
     sim_db: Any,
     path_keys: list[str],
     *,
     kind_cache: dict[str, str] | None = None,
 ) -> str | None:
-    """Classify a yml leaf from on-disk YAML (no C++ material/spectrum object load)."""
+    """Classify a leaf from the precompiled index (build-time may read YAML)."""
     cache = kind_cache if kind_cache is not None else {}
     pid = path_id(path_keys)
     if pid in cache:
         return cache[pid]
+    precompiled = _active_precompiled_index(sim_db)
+    if precompiled is not None:
+        kind = precompiled.kind_by_path_id.get(pid)
+        if kind is not None:
+            cache[pid] = kind
+            return kind
     try:
         leaf = sim_db.walk_query_path(path_keys)
         kind = sdp.infer_yml_leaf_kind(leaf.storage_path())
@@ -185,6 +225,13 @@ def get_tree_children(
     pid = path_id(path_keys)
     if pid in cache:
         return cache[pid]
+    precompiled = _active_precompiled_index(sim_db)
+    if precompiled is not None:
+        if pid in precompiled.children_by_path_id:
+            children = [dict(child) for child in precompiled.children_by_path_id[pid]]
+            cache[pid] = children
+            return children
+        return []
     if not path_keys:
         query = sim_db.query()
     else:
@@ -242,25 +289,8 @@ def _build_subtree(
 
 
 def search_db_paths(sim_db: Any, query: str, max_results: int = 80) -> list[dict[str, Any]]:
-    matches: list[dict[str, Any]] = []
-    kind_cache: dict[str, str] = {}
-    for path_keys in _iter_matching_leaf_paths(sim_db, query, max_results=max_results):
-        leaf_type = leaf_type_for_path(sim_db, path_keys, kind_cache=kind_cache)
-        if leaf_type is None:
-            continue
-        if leaf_type == "spectrum":
-            label = path_keys[-1] if path_keys else "spectrum"
-        else:
-            label = simulation.material_unique_name_from_path_keys(path_keys)
-        matches.append(
-            {
-                "path_keys": path_keys,
-                "leaf_type": leaf_type,
-                "label": label,
-                "path_id": path_id(path_keys),
-            }
-        )
-    return matches
+    cached = _search_precompiled_entries(sim_db, query, max_results=max_results)
+    return cached or []
 
 
 def spectrum_arrays(spec: Any) -> tuple[np.ndarray, np.ndarray]:

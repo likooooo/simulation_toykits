@@ -59,7 +59,7 @@ def test_refresh_auto_y_domains_preserves_manual_y_zoom() -> None:
     session = FreehandSession()
     wl = np.linspace(0.4, 0.8, 3)
     session.reset_after_build(
-        formula="air 0 SiO2 0.1 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_um=wl,
         angle_deg=0.0,
         current={"R": np.array([0.5, 0.5, 0.5]), "T": np.zeros(3), "A": np.zeros(3)},
@@ -82,7 +82,7 @@ def test_apply_optimization_result_refreshes_auto_y() -> None:
     session = FreehandSession()
     wl = np.linspace(0.4, 0.8, 3)
     session.reset_after_build(
-        formula="air 0 SiO2 0.1 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_um=wl,
         angle_deg=0.0,
         current={"R": np.array([0.2, 0.2, 0.2]), "T": np.zeros(3), "A": np.zeros(3)},
@@ -90,7 +90,7 @@ def test_apply_optimization_result_refreshes_auto_y() -> None:
         wl_to=0.8,
     )
     session.apply_optimization_result(
-        formula="air 0 SiO2 0.2 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.2 Si_Aspnes 0",
         current={"R": np.array([0.5, 0.5, 0.5]), "T": np.zeros(3), "A": np.zeros(3)},
         merit_history=[1.0, 0.5],
         merit_initial=1.0,
@@ -102,7 +102,7 @@ def test_apply_optimization_result_preserves_manual_x_zoom() -> None:
     session = FreehandSession()
     wl = np.linspace(0.4, 0.8, 3)
     session.reset_after_build(
-        formula="air 0 SiO2 0.1 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_um=wl,
         angle_deg=0.0,
         current={"R": np.array([0.2, 0.2, 0.2]), "T": np.zeros(3), "A": np.zeros(3)},
@@ -115,7 +115,7 @@ def test_apply_optimization_result_preserves_manual_x_zoom() -> None:
         "yAuto": False,
     }
     session.apply_optimization_result(
-        formula="air 0 SiO2 0.2 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.2 Si_Aspnes 0",
         current={"R": np.array([0.5, 0.5, 0.5]), "T": np.zeros(3), "A": np.zeros(3)},
         merit_history=[1.0, 0.5],
         merit_initial=1.0,
@@ -187,7 +187,7 @@ def test_to_component_args_includes_merit_history() -> None:
     session = FreehandSession()
     wl = np.linspace(0.4, 0.8, 3)
     session.reset_after_build(
-        formula="air 0 SiO2 0.1 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_um=wl,
         angle_deg=0.0,
         current={"R": np.array([0.2, 0.2, 0.2]), "T": np.zeros(3), "A": np.zeros(3)},
@@ -197,7 +197,7 @@ def test_to_component_args_includes_merit_history() -> None:
     assert session.to_component_args()["meritHistory"] is None
 
     session.apply_optimization_result(
-        formula="air 0 SiO2 0.2 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.2 Si_Aspnes 0",
         current={"R": np.array([0.5, 0.5, 0.5]), "T": np.zeros(3), "A": np.zeros(3)},
         merit_history=[1.0, 0.5],
         merit_initial=1.0,
@@ -209,7 +209,7 @@ def test_to_component_args_includes_pre_optimize_current() -> None:
     session = FreehandSession()
     wl = np.linspace(0.4, 0.8, 3)
     session.reset_after_build(
-        formula="air 0 SiO2 0.1 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_um=wl,
         angle_deg=0.0,
         current={"R": np.array([0.2, 0.2, 0.2]), "T": np.zeros(3), "A": np.zeros(3)},
@@ -220,7 +220,7 @@ def test_to_component_args_includes_pre_optimize_current() -> None:
 
     pre = {"R": np.array([0.2, 0.2, 0.2]), "T": np.zeros(3), "A": np.zeros(3)}
     session.apply_optimization_result(
-        formula="air 0 SiO2 0.2 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.2 Si_Aspnes 0",
         current={"R": np.array([0.5, 0.5, 0.5]), "T": np.zeros(3), "A": np.zeros(3)},
         merit_history=[1.0, 0.5],
         merit_initial=1.0,
@@ -235,7 +235,7 @@ def test_reset_after_build_clears_pre_optimize_current() -> None:
     session = FreehandSession()
     wl = np.linspace(0.4, 0.8, 3)
     session.reset_after_build(
-        formula="air 0 SiO2 0.1 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_um=wl,
         angle_deg=0.0,
         current={"R": np.array([0.2, 0.2, 0.2]), "T": np.zeros(3), "A": np.zeros(3)},
@@ -243,14 +243,14 @@ def test_reset_after_build_clears_pre_optimize_current() -> None:
         wl_to=0.8,
     )
     session.apply_optimization_result(
-        formula="air 0 SiO2 0.2 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.2 Si_Aspnes 0",
         current={"R": np.array([0.5, 0.5, 0.5]), "T": np.zeros(3), "A": np.zeros(3)},
         merit_history=[1.0, 0.5],
         merit_initial=1.0,
         pre_optimize_current={"R": np.array([0.2, 0.2, 0.2]), "T": np.zeros(3), "A": np.zeros(3)},
     )
     session.reset_after_build(
-        formula="air 0 SiO2 0.1 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_um=wl,
         angle_deg=0.0,
         current={"R": np.array([0.2, 0.2, 0.2]), "T": np.zeros(3), "A": np.zeros(3)},
@@ -265,7 +265,7 @@ def test_apply_optimization_result_y_domain_includes_pre_optimize_current() -> N
     session = FreehandSession()
     wl = np.linspace(0.4, 0.8, 3)
     session.reset_after_build(
-        formula="air 0 SiO2 0.1 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_um=wl,
         angle_deg=0.0,
         current={"R": np.array([0.2, 0.2, 0.2]), "T": np.zeros(3), "A": np.zeros(3)},
@@ -273,7 +273,7 @@ def test_apply_optimization_result_y_domain_includes_pre_optimize_current() -> N
         wl_to=0.8,
     )
     session.apply_optimization_result(
-        formula="air 0 SiO2 0.2 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.2 Si_Aspnes 0",
         current={"R": np.array([0.5, 0.5, 0.5]), "T": np.zeros(3), "A": np.zeros(3)},
         merit_history=[1.0, 0.5],
         merit_initial=1.0,
@@ -322,13 +322,13 @@ def test_load_freehand_base_config_reads_optimizer_from_json() -> None:
     assert Path(cfg["cost_function"]["path"]).name == "cost_freehand.py"
     assert cfg["thickness_step_um"] == pytest.approx(1e-8)
     assert cfg["initial_preset_id"] == "custom"
-    assert "MgF2" in cfg["initial_formula"]
+    assert "MgF2_Dodge-o" in cfg["initial_formula"]
     assert "N-BK7" in cfg["initial_formula"]
     assert get_freehand_n_wl() == 100
     assert get_freehand_cost_scope() == "zoom"
     assert get_freehand_initial_preset_id(FILMSTACK_PRESET_CATALOG.valid_preset_ids) == CUSTOM_PRESET_ID
     formula = get_freehand_initial_formula()
-    assert formula.startswith("air 0 MgF2")
+    assert formula.startswith("air_Ciddor 0 MgF2_Dodge-o")
     assert formula.endswith("N-BK7 0")
 
 
@@ -347,7 +347,7 @@ def test_hydrate_widgets_from_session_restores_missing_keys(mock_streamlit_sessi
     session = FreehandSession()
     wl = np.linspace(0.4, 0.8, 5)
     session.reset_after_build(
-        formula="air 0 SiO2 0.1 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_um=wl,
         angle_deg=25.0,
         current={"R": wl * 0.1, "T": wl * 0.5, "A": wl * 0.4},
@@ -357,7 +357,7 @@ def test_hydrate_widgets_from_session_restores_missing_keys(mock_streamlit_sessi
     from filmstack_simulation.filmstack_optimization.local_search.page import _hydrate_widgets_from_session
 
     _hydrate_widgets_from_session(session)
-    assert state["fs_opt_formula"] == "air 0 SiO2 0.1 Si 0"
+    assert state["fs_opt_formula"] == "air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0"
     assert state["fs_opt_wl_from"] == pytest.approx(0.42)
     assert state["fs_opt_wl_to"] == pytest.approx(0.78)
     assert state["fs_opt_angle"] == pytest.approx(25.0)
@@ -365,7 +365,7 @@ def test_hydrate_widgets_from_session_restores_missing_keys(mock_streamlit_sessi
 
 def test_build_freehand_config_merges_runtime_over_base() -> None:
     cfg = build_freehand_config(
-        working_formula="air 0 SiO2 0.1 Si 0",
+        working_formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_from=0.45,
         wl_to=0.75,
         n_wl=5,
@@ -373,7 +373,7 @@ def test_build_freehand_config_merges_runtime_over_base() -> None:
         touched={"R": False, "T": False, "A": False},
         target={"R": None, "T": None, "A": None},
     )
-    assert cfg["formula"] == "air 0 SiO2 0.1 Si 0"
+    assert cfg["formula"] == "air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0"
     assert cfg["target_wl"] == [0.45, 0.75, pytest.approx(0.075)]
     assert cfg["target_angle"] == [15.0, 15.0]
     assert cfg["optimizer"]["options"]["maxiter"] == 8
@@ -383,7 +383,7 @@ def test_build_freehand_config_target_wl_grid_matches_ui_points() -> None:
     import filmstack_optimization_utils as fos  # noqa: E402
 
     cfg = build_freehand_config(
-        working_formula="air 0 SiO2 0.1 Si 0",
+        working_formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_from=0.4,
         wl_to=0.8,
         n_wl=80,
@@ -446,7 +446,7 @@ def test_curve_drag_end_updates_edit_wl_indices(curve_drag_session) -> None:
 def test_build_freehand_config_full_scope_omits_wl_indices() -> None:
     wl = np.array([0.4, 0.5, 0.6, 0.7, 0.8])
     cfg = build_freehand_config(
-        working_formula="air 0 SiO2 0.1 Si 0",
+        working_formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_from=0.4,
         wl_to=0.8,
         n_wl=5,
@@ -465,7 +465,7 @@ def test_build_freehand_config_full_scope_omits_wl_indices() -> None:
 def test_build_freehand_config_zoom_scope_uses_view_domain() -> None:
     wl = np.array([0.4, 0.5, 0.6])
     cfg = build_freehand_config(
-        working_formula="air 0 SiO2 0.1 Si 0",
+        working_formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_from=0.4,
         wl_to=0.6,
         n_wl=3,
@@ -483,7 +483,7 @@ def test_build_freehand_config_zoom_scope_uses_view_domain() -> None:
 def test_build_freehand_config_stroke_scope_uses_edit_indices() -> None:
     wl = np.linspace(0.4, 0.8, 5)
     cfg = build_freehand_config(
-        working_formula="air 0 SiO2 0.1 Si 0",
+        working_formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_from=0.4,
         wl_to=0.8,
         n_wl=5,
@@ -512,7 +512,7 @@ def test_metric_active_respects_wl_index_mask() -> None:
 def freehand_cost_setup(materials_db):
     import filmstack_optimization_utils as fos
 
-    formula = "air 0 SiO2 0.1 Si 0"
+    formula = "air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0"
     spec = fos.stack_from_formula(formula, materials_db)
     wls = np.linspace(0.4, 0.8, 5)
     targets = [
@@ -586,11 +586,9 @@ def test_freehand_target_full_scope_ignores_indices(freehand_cost_setup) -> None
     assert loss_full_after > loss_full
 
 
-def test_formula_from_stack_emits_catalog_not_unique_name(materials_db) -> None:
-    air = materials_db["air"]
-    unique = str(air.unique_name())
-    assert unique != "air"
-    assert formula_from_stack([air], [0.0], materials_db) == "air 0"
+def test_formula_from_stack_emits_unique_name(materials_db) -> None:
+    air = materials_db["air_Ciddor"]
+    assert formula_from_stack([air], [0.0], materials_db) == "air_Ciddor 0"
 
 
 def test_formula_from_stack_emits_inline_nk_for_pseudo_material(simulation) -> None:
@@ -603,9 +601,7 @@ def test_formula_from_stack_round_trip_optical_filter(materials_db, simulation) 
     from filmstack_simulation.presets import build_formula_for_preset
     from toykits_config import FILMSTACK_PRESET_CATALOG
 
-    formula = build_formula_for_preset(
-        "optical_filter", FILMSTACK_PRESET_CATALOG, materials_db, 0.55
-    )
+    formula = build_formula_for_preset("optical_filter", FILMSTACK_PRESET_CATALOG)
     mats, th = layers_from_formula(formula, materials_db, simulation_module=simulation)
     round_trip = formula_from_stack(mats, th, materials_db)
     mats2, th2 = layers_from_formula(round_trip, materials_db, simulation_module=simulation)
@@ -616,8 +612,8 @@ def test_formula_from_stack_round_trip_optical_filter(materials_db, simulation) 
 def test_layers_from_formula_resolves_unique_air_name(materials_db, simulation) -> None:
     from filmstack_visualizer import layers_from_formula
 
-    unique_air = str(materials_db["air"].unique_name())
-    formula = f"{unique_air} 0 SiO2 0.1 Si 0"
+    unique_air = "air_Ciddor"
+    formula = f"{unique_air} 0 SiO2_Arosa 0.1 Si_Aspnes 0"
     mats, _th = layers_from_formula(formula, materials_db, simulation_module=simulation)
     assert len(mats) >= 2
 
@@ -625,7 +621,7 @@ def test_layers_from_formula_resolves_unique_air_name(materials_db, simulation) 
 def test_build_freehand_config_touched_r_only() -> None:
     target_r = np.linspace(0.1, 0.2, 5)
     cfg = build_freehand_config(
-        working_formula="Vacuum 0 1 0 SiO2 0.1 Si 0",
+        working_formula="Vacuum 0 1 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_from=0.4,
         wl_to=0.8,
         n_wl=5,
@@ -643,7 +639,7 @@ def test_freehand_session_reset_clears_targets() -> None:
     session = FreehandSession()
     session.touched["R"] = True
     session.target["R"] = np.array([0.1, 0.2])
-    session.last_optimized_formula = "air 0 SiO2 0.1 Si 0"
+    session.last_optimized_formula = "air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0"
     wl = np.linspace(0.4, 0.8, 2)
     session.reset_after_build(
         formula="test",
@@ -665,7 +661,7 @@ def test_apply_optimization_result_preserves_baseline() -> None:
     session = FreehandSession()
     wl = np.linspace(0.4, 0.8, 3)
     session.reset_after_build(
-        formula="air 0 SiO2 0.1 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_um=wl,
         angle_deg=0.0,
         current={"R": wl * 0.1, "T": wl * 0.5, "A": wl * 0.4},
@@ -673,14 +669,14 @@ def test_apply_optimization_result_preserves_baseline() -> None:
         wl_to=0.8,
     )
     session.apply_optimization_result(
-        formula="air 0 SiO2 0.12 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.12 Si_Aspnes 0",
         current={"R": wl * 0.12, "T": wl * 0.48, "A": wl * 0.4},
         merit_history=[0.1, 0.05],
         merit_initial=0.1,
     )
-    assert session.baseline_formula == "air 0 SiO2 0.1 Si 0"
-    assert session.working_formula == "air 0 SiO2 0.12 Si 0"
-    assert session.last_optimized_formula == "air 0 SiO2 0.12 Si 0"
+    assert session.baseline_formula == "air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0"
+    assert session.working_formula == "air_Ciddor 0 SiO2_Arosa 0.12 Si_Aspnes 0"
+    assert session.last_optimized_formula == "air_Ciddor 0 SiO2_Arosa 0.12 Si_Aspnes 0"
     assert session.opt_round == 1
 
 
@@ -702,7 +698,7 @@ def test_combine_polarization_rt_te_tm_unpolarized() -> None:
 
 def test_build_freehand_config_includes_polarization() -> None:
     cfg = build_freehand_config(
-        working_formula="air 0 SiO2 0.1 Si 0",
+        working_formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_from=0.4,
         wl_to=0.8,
         n_wl=5,
@@ -829,7 +825,7 @@ def test_reset_after_build_initializes_layer_range_pct() -> None:
     session = FreehandSession()
     wl = np.linspace(0.4, 0.8, 3)
     session.reset_after_build(
-        formula="air 0 SiO2 0.1 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_um=wl,
         angle_deg=0.0,
         current={"R": np.zeros(3), "T": np.zeros(3), "A": np.zeros(3)},
@@ -845,7 +841,7 @@ def test_apply_optimization_result_preserves_layer_range_pct() -> None:
     session = FreehandSession()
     wl = np.linspace(0.4, 0.8, 3)
     session.reset_after_build(
-        formula="air 0 SiO2 0.1 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_um=wl,
         angle_deg=0.0,
         current={"R": np.zeros(3), "T": np.zeros(3), "A": np.zeros(3)},
@@ -856,7 +852,7 @@ def test_apply_optimization_result_preserves_layer_range_pct() -> None:
     )
     session.layer_range_pct[1] = 15.0
     session.apply_optimization_result(
-        formula="air 0 SiO2 0.12 Si 0",
+        formula="air_Ciddor 0 SiO2_Arosa 0.12 Si_Aspnes 0",
         current={"R": np.zeros(3), "T": np.zeros(3), "A": np.zeros(3)},
         merit_history=[1.0, 0.5],
     )
@@ -867,7 +863,7 @@ def test_build_freehand_config_includes_layer_bounds() -> None:
     import filmstack_optimization_utils as fos  # noqa: E402
 
     cfg = build_freehand_config(
-        working_formula="air 0 SiO2 0.1 Si 0",
+        working_formula="air_Ciddor 0 SiO2_Arosa 0.1 Si_Aspnes 0",
         wl_from=0.4,
         wl_to=0.8,
         n_wl=5,

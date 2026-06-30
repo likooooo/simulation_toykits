@@ -76,7 +76,7 @@ def _render_cache_section_tdsl(key_prefix: str, options: list, keys: list, label
             if ut0_current in keys:
                 ut0_idx = keys.index(ut0_current) + 1
             st.selectbox(
-                "u'(0)（可选项, 默认为0）",
+                "u'(0)（可选项，默认为 0）",
                 range(len(ut0_choices)),
                 format_func=lambda i: ut0_choices[i],
                 index=ut0_idx,
@@ -118,7 +118,6 @@ f.run_start()
 
 st.header("Time-Dependent Sturm-Liouville 方程")
 
-st.subheader("时间导数阶数")
 st.selectbox(
     "时间导数阶数",
     options=[1, 2],

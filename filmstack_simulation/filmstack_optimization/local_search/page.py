@@ -17,15 +17,18 @@ from filmstack_simulation.help_texts import (
     WL_RANGE_LABEL,
 )
 from filmstack_simulation.page_widgets import (
-    FORMULA_STACK_HEIGHT_PX,
-    on_preset_change,
+    OPT_FORMULA_STACK_HEIGHT_PX,
+    OPT_UI_APPLY,
+    DEFAULT_FIXED_ANGLE,
+    angle_polarization_inputs,
+    make_preset_change_handler,
+    opt_ui_defaults,
     panel_head,
     params_stack_spacer,
-    preset_polarization_row,
+    preset_select_row,
     range_inputs,
     resolve_stack_cached,
     show_rebuild_prompt,
-    single_input_row,
 )
 import filmstack_visualizer
 import filmstack_optimization_utils as fos
@@ -97,7 +100,6 @@ _POLARIZATION_CHANGED_KEY = "fs_opt_polarization_changed"
 _PRESET_CHANGED_KEY = "fs_opt_preset_changed"
 
 _ANGLE_CLAMP = (-89.9, 89.9)
-_DEFAULT_ANGLE = 0.0
 _INPUT_ROW_COLS = [1.5, 1]
 
 
@@ -244,22 +246,16 @@ def _hydrate_widgets_from_session(session: FreehandSession) -> None:
 
 
 def ensure_session_defaults(
-    materials_db: Optional[Dict[str, Any]] = None,
     *,
     preset_catalog: PresetCatalog,
     initial_preset_id: str,
     initial_formula: str,
-    sim_wl_from: float | None = None,
-    sim_wl_to: float | None = None,
 ) -> None:
     ensure_filmstack_session_defaults(
-        materials_db,
         keys=_SESSION_KEYS,
         preset_catalog=preset_catalog,
         initial_preset_id=initial_preset_id,
         initial_formula=initial_formula,
-        sim_wl_from=sim_wl_from,
-        sim_wl_to=sim_wl_to,
     )
 
 
@@ -268,17 +264,19 @@ def _on_polarization_change() -> None:
 
 
 def _on_preset_change() -> None:
-    st.session_state[_PRESET_CHANGED_KEY] = True
-    ctx = st.session_state.get(_PAGE_CONTEXT_KEY)
-    if ctx is None:
-        return
-    on_preset_change(
+    make_preset_change_handler(
+        preset_changed_key=_PRESET_CHANGED_KEY,
+        page_context_key=_PAGE_CONTEXT_KEY,
         preset_select_key=_PRESET_SELECT_KEY,
         preset_key=_PRESET_KEY,
         formula_key=_FORMULA_KEY,
-        page_context_key=_PAGE_CONTEXT_KEY,
-        preset_ids=ctx.preset_catalog.preset_ids,
-    )
+        ui=OPT_UI_APPLY,
+        defaults_factory=lambda c: opt_ui_defaults(
+            wl_from=c.recommended_wl_from,
+            wl_to=c.recommended_wl_to,
+            formula=c.initial_formula,
+        ),
+    )()
 
 
 def _params_stale(
@@ -301,9 +299,6 @@ def _params_stale(
     if abs(wl_from - session.wl_from) > 1e-9 or abs(wl_to - session.wl_to) > 1e-9:
         return True
     return False
-
-
-GetMaterialsDb = Callable[[], Dict[str, Any]]
 
 
 def _sync_view_domain(session: FreehandSession, event: dict[str, Any]) -> None:
@@ -438,6 +433,12 @@ def render_page(
         context=context,
         keys=_SESSION_KEYS,
         materials_db=materials_db,
+        ui=OPT_UI_APPLY,
+        ui_defaults=opt_ui_defaults(
+            wl_from=context.recommended_wl_from,
+            wl_to=context.recommended_wl_to,
+            formula=context.initial_formula,
+        ),
     )
     session = _session()
     _hydrate_widgets_from_session(session)
@@ -456,20 +457,17 @@ def render_page(
         st.markdown('<div class="fs-opt-formula-area-marker"></div>', unsafe_allow_html=True)
         formula = st.text_area(
             "多层膜构建指令",
-            height=FORMULA_STACK_HEIGHT_PX,
-            help=FORMULA_HELP_TEXT,
+            height=OPT_FORMULA_STACK_HEIGHT_PX,
             label_visibility="collapsed",
             key=_FORMULA_KEY,
         )
     with params_col:
         st.markdown('<div class="fs-opt-params-stack-marker"></div>', unsafe_allow_html=True)
-        polarization = preset_polarization_row(
+        preset_select_row(
             preset_options=range(len(preset_ids)),
             preset_format_func=lambda i: preset_labels[preset_ids[i]],
             preset_key=_PRESET_SELECT_KEY,
             preset_on_change=_on_preset_change,
-            polarization_key=_POLARIZATION_KEY,
-            polarization_on_change=_on_polarization_change,
             css_prefix="fs-opt",
         )
         wl_from, wl_to = range_inputs(
@@ -481,12 +479,14 @@ def render_page(
             default_to=default_wl_to,
             fmt="%.4f",
         )
-        angle_fix = single_input_row(
-            "固定入射角 θ (°)",
+        angle_fix, polarization = angle_polarization_inputs(
+            "入射角 θ (°)/偏振",
             css_prefix="fs-opt",
-            key=_ANGLE_KEY,
-            default=_DEFAULT_ANGLE,
-            fmt="%.2f",
+            angle_key=_ANGLE_KEY,
+            angle_default=DEFAULT_FIXED_ANGLE,
+            angle_fmt="%.2f",
+            polarization_key=_POLARIZATION_KEY,
+            polarization_on_change=_on_polarization_change,
         )
         sim_clicked = st.button("仿真", key="fs_opt_build", width="stretch")
         params_stack_spacer(css_prefix="fs-opt")
@@ -545,9 +545,11 @@ def render_page(
         materials: list[Any] = []
         thicknesses_um: list[float] = []
         film_indices: list[int] = []
+        stack_resolved = False
         try:
             materials, thicknesses_um = _resolve_stack_cached(session.working_formula, db)
             film_indices = film_layer_indices(len(thicknesses_um))
+            stack_resolved = True
             layer_table = stack_table_rows(
                 materials,
                 thicknesses_um,
@@ -586,64 +588,63 @@ def render_page(
         except Exception as exc:
             st.warning(f"层表解析失败: {exc}")
 
-        if session.optimizing and not any(session.touched.values()):
+        if not stack_resolved:
+            if session.optimizing:
+                session.optimizing = False
+        elif session.optimizing and not any(session.touched.values()):
             session.optimizing = False
 
-        panel_head(
-            "R / T / A vs λ（Freehand）",
-            css_prefix="fs-opt",
-            help_text=FREEHAND_CHART_HELP_TEXT,
-        )
-
-        component_args = session.to_component_args()
-        component_args["renderGen"] = int(st.session_state.get(_RENDER_GEN_KEY, 0))
-        component_args["resetTargets"] = bool(
-            st.session_state.pop("fs_opt_reset_component", False)
-        )
-
-        raw_event = freehand_editor(key="fs_opt_freehand_editor", **component_args)
-        needs_rerun = False
-        if raw_event is not None and not just_built:
-            last_ts = float(st.session_state.get(_LAST_EVENT_TS_KEY, 0.0))
-            event, last_ts = consume_component_event(raw_event, last_ts)
-            st.session_state[_LAST_EVENT_TS_KEY] = last_ts
-            if event is not None:
-                etype = event.get("type")
-                if etype in _VIEW_UI_EVENTS:
-                    _handle_component_event(session, event)
-                    _bump_render_gen()
-                    st.rerun()
-                else:
-                    needs_rerun = _process_component_event(
-                        session,
-                        event,
-                        db,
-                        film_indices=film_indices,
-                        thicknesses_um=thicknesses_um,
-                    )
-
-        if needs_rerun:
-            st.rerun()
-
-        opt_success = st.session_state.pop(_OPT_SUCCESS_KEY, None)
-        if opt_success:
-            st.success(opt_success)
-
-        panel_head(
-            "优化后膜系指令",
-            css_prefix="fs-opt",
-            help_text=OPTIMIZED_FORMULA_HELP_TEXT,
-        )
-        if session.last_optimized_formula:
-            st.markdown(
-                '<div class="fs-opt-optimized-formula-marker"></div>',
-                unsafe_allow_html=True,
+        if stack_resolved:
+            panel_head(
+                "R / T / A vs λ（Freehand）",
+                css_prefix="fs-opt",
+                help_text=FREEHAND_CHART_HELP_TEXT,
             )
-            st.code(session.last_optimized_formula, language=None)
-        else:
-            st.caption("完成一次 Freehand 优化后将在此显示膜系指令。")
-    elif sim_clicked:
-        pass
-    else:
-        # st.info("输入膜系公式并点击「仿真」以开始 Freehand 优化。")
-        pass
+
+            component_args = session.to_component_args()
+            component_args["renderGen"] = int(st.session_state.get(_RENDER_GEN_KEY, 0))
+            component_args["resetTargets"] = bool(
+                st.session_state.pop("fs_opt_reset_component", False)
+            )
+
+            raw_event = freehand_editor(key="fs_opt_freehand_editor", **component_args)
+            needs_rerun = False
+            if raw_event is not None and not just_built:
+                last_ts = float(st.session_state.get(_LAST_EVENT_TS_KEY, 0.0))
+                event, last_ts = consume_component_event(raw_event, last_ts)
+                st.session_state[_LAST_EVENT_TS_KEY] = last_ts
+                if event is not None:
+                    etype = event.get("type")
+                    if etype in _VIEW_UI_EVENTS:
+                        _handle_component_event(session, event)
+                        _bump_render_gen()
+                        st.rerun()
+                    else:
+                        needs_rerun = _process_component_event(
+                            session,
+                            event,
+                            db,
+                            film_indices=film_indices,
+                            thicknesses_um=thicknesses_um,
+                        )
+
+            if needs_rerun:
+                st.rerun()
+
+            opt_success = st.session_state.pop(_OPT_SUCCESS_KEY, None)
+            if opt_success:
+                st.success(opt_success)
+
+            panel_head(
+                "优化后膜系指令",
+                css_prefix="fs-opt",
+                help_text=OPTIMIZED_FORMULA_HELP_TEXT,
+            )
+            if session.last_optimized_formula:
+                st.markdown(
+                    '<div class="fs-opt-optimized-formula-marker"></div>',
+                    unsafe_allow_html=True,
+                )
+                st.code(session.last_optimized_formula, language=None)
+            else:
+                st.caption("完成一次 Freehand 优化后将在此显示膜系指令。")

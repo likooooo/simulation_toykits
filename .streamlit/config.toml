@@ -1,0 +1,5 @@
+# Dual-stack bind so localhost (IPv6 ::1) works from Windows browser via WSL.
+# See: https://github.com/streamlit/streamlit/issues/15378
+[server]
+address = "::"
+port = 8052

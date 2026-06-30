@@ -2,7 +2,7 @@
   "n_wl": 100,
   "freehand_cost_scope": "zoom",
   "initial_preset_id": "custom",
-  "initial_formula": "air 0 MgF2 0.15154 TiO2 0.00815 MgF2 0.05059 TiO2 0.01118 MgF2 0.03130 TiO2 0.00720 MgF2 0.09352 N-BK7 0",
+  "initial_formula": "air_Ciddor 0 MgF2_Dodge-o 0.15154 TiO2_Jolivet-anatase 0.00815 MgF2_Dodge-o 0.05059 TiO2_Jolivet-anatase 0.01118 MgF2_Dodge-o 0.03130 TiO2_Jolivet-anatase 0.00720 MgF2_Dodge-o 0.09352 N-BK7 0",
   "default_thickness_range_pct": 30,
   "polarization": "UNPOLARIZED",
   "#thickness_min": 0.0,

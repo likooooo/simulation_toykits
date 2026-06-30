@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Dict, Optional
 
 import streamlit as st
 
@@ -10,7 +10,13 @@ import filmstack_visualizer
 from filmstack_simulation.help_texts import (
     FORMULA_DOCS_URL,
     FORMULA_HELP_TEXT,
+    FREESNEL_COMPARE_PAGE_URL,
+    NK_CURVE_HELP_TEXT,
+    SLICE_AT_ANGLE_HELP_TEXT,
+    SLICE_AT_WL_HELP_TEXT,
+    SPECTRAL_MAP_HELP_TEXT,
     WL_RANGE_LABEL,
+    fs_compare_artifact_available,
 )
 from filmstack_simulation.page_shell import (
     FilmstackSessionKeys,
@@ -28,15 +34,21 @@ from filmstack_simulation.simulation import (
     resolve_stack_with_layers,
 )
 from filmstack_simulation.page_widgets import (
-    on_preset_change,
-    preset_polarization_row,
+    DEFAULT_ANG_FROM,
+    DEFAULT_ANG_TO,
+    DEFAULT_TARGET_ANG,
+    DEFAULT_TARGET_WL,
     resolve_stack_cached,
-    POLARIZATION_LABELS,
+    SIM_UI_APPLY,
+    sim_ui_defaults,
+    make_preset_change_handler,
     panel_head,
+    polarization_row,
+    preset_select_row,
     range_inputs,
     show_rebuild_prompt,
     target_wl_ang_inputs,
-    FORMULA_STACK_HEIGHT_PX,
+    SIM_FORMULA_STACK_HEIGHT_PX,
 )
 
 FORMULA_KEY = "fs_sim_formula"
@@ -52,11 +64,6 @@ _POLARIZATION_CHANGED_KEY = "fs_sim_polarization_changed"
 _PRESET_CHANGED_KEY = "fs_sim_preset_changed"
 _BUILD_SNAPSHOT_KEY = "fs_sim_build_snapshot"
 
-DEFAULT_ANG_FROM = 0.0
-DEFAULT_ANG_TO = 60.0
-DEFAULT_TARGET_WL = 0.55
-DEFAULT_TARGET_ANG = 0.0
-
 _INPUT_ROW_COLS = [1.5, 1]
 
 _PAGE_CONTEXT_KEY = "_fs_sim_page_context"
@@ -70,22 +77,16 @@ _SESSION_KEYS = FilmstackSessionKeys(
 
 
 def ensure_session_defaults(
-    materials_db: Optional[Dict[str, Any]] = None,
     *,
     preset_catalog: PresetCatalog,
     initial_preset_id: str,
     initial_formula: str,
-    sim_wl_from: float | None = None,
-    sim_wl_to: float | None = None,
 ) -> None:
     ensure_filmstack_session_defaults(
-        materials_db,
         keys=_SESSION_KEYS,
         preset_catalog=preset_catalog,
         initial_preset_id=initial_preset_id,
         initial_formula=initial_formula,
-        sim_wl_from=sim_wl_from,
-        sim_wl_to=sim_wl_to,
     )
 
 
@@ -104,23 +105,14 @@ def _on_polarization_change() -> None:
     st.session_state[_POLARIZATION_CHANGED_KEY] = True
 
 
-def _resolve_stack_cached(
-    formula: str, db: Dict[str, Any]
-) -> tuple[list[Any], list[float], list[Any]]:
-    return resolve_stack_cached(
+def _layers_from_formula(formula: str, db: Dict[str, Any]) -> list[Any]:
+    _, _, layers = resolve_stack_cached(
         formula,
         db,
         cache_key=STACK_RESOLVED_KEY,
         resolve=resolve_stack_with_layers,
     )
-
-
-def _layers_from_formula(formula: str, db: Dict[str, Any]) -> list[Any]:
-    _, _, layers = _resolve_stack_cached(formula, db)
     return layers
-
-
-GetMaterialsDb = Callable[[], Dict[str, Any]]
 
 
 def _sim_snapshot_stale(
@@ -165,7 +157,12 @@ def _run_full_simulation(
     target_ang: float,
 ) -> None:
     plot_formula = formula.strip()
-    materials, thicknesses_um, layers = _resolve_stack_cached(plot_formula, db)
+    materials, thicknesses_um, layers = resolve_stack_cached(
+        plot_formula,
+        db,
+        cache_key=STACK_RESOLVED_KEY,
+        resolve=resolve_stack_with_layers,
+    )
     st.session_state[STACK_BUILT_FORMULA_KEY] = plot_formula
 
     with st.spinner("计算中…"):
@@ -243,17 +240,19 @@ def _run_full_simulation(
 
 
 def _on_preset_change() -> None:
-    st.session_state[_PRESET_CHANGED_KEY] = True
-    ctx = st.session_state.get(_PAGE_CONTEXT_KEY)
-    if ctx is None:
-        return
-    on_preset_change(
+    make_preset_change_handler(
+        preset_changed_key=_PRESET_CHANGED_KEY,
+        page_context_key=_PAGE_CONTEXT_KEY,
         preset_select_key=PRESET_SELECT_KEY,
         preset_key=PRESET_KEY,
         formula_key=FORMULA_KEY,
-        page_context_key=_PAGE_CONTEXT_KEY,
-        preset_ids=ctx.preset_catalog.preset_ids,
-    )
+        ui=SIM_UI_APPLY,
+        defaults_factory=lambda c: sim_ui_defaults(
+            wl_from=c.recommended_wl_from,
+            wl_to=c.recommended_wl_to,
+            formula=c.initial_formula,
+        ),
+    )()
 
 
 def render_page(
@@ -269,6 +268,12 @@ def render_page(
         context=context,
         keys=_SESSION_KEYS,
         materials_db=materials_db,
+        ui=SIM_UI_APPLY,
+        ui_defaults=sim_ui_defaults(
+            wl_from=context.recommended_wl_from,
+            wl_to=context.recommended_wl_to,
+            formula=context.initial_formula,
+        ),
     )
 
     st.markdown('<h1 class="fs-sim-title">多层膜仿真</h1>', unsafe_allow_html=True)
@@ -285,20 +290,17 @@ def render_page(
         st.markdown('<div class="fs-sim-formula-area-marker"></div>', unsafe_allow_html=True)
         formula = st.text_area(
             "多层膜构建指令",
-            height=FORMULA_STACK_HEIGHT_PX,
-            help=FORMULA_HELP_TEXT,
+            height=SIM_FORMULA_STACK_HEIGHT_PX,
             label_visibility="collapsed",
             key=FORMULA_KEY,
         )
     with params_col:
         st.markdown('<div class="fs-sim-params-stack-marker"></div>', unsafe_allow_html=True)
-        polarization = preset_polarization_row(
+        preset_select_row(
             preset_options=range(len(preset_ids)),
             preset_format_func=lambda i: preset_labels[preset_ids[i]],
             preset_key=PRESET_SELECT_KEY,
             preset_on_change=_on_preset_change,
-            polarization_key=_POLARIZATION_KEY,
-            polarization_on_change=_on_polarization_change,
             css_prefix="fs-sim",
         )
         wl_from, wl_to = range_inputs(
@@ -319,6 +321,11 @@ def render_page(
             default_to=DEFAULT_ANG_TO,
             fmt="%.2f",
         )
+        polarization = polarization_row(
+            polarization_key=_POLARIZATION_KEY,
+            polarization_on_change=_on_polarization_change,
+            css_prefix="fs-sim",
+        )
         target_wl, target_ang = target_wl_ang_inputs(
             "目标波长/角度",
             css_prefix="fs-sim",
@@ -332,7 +339,6 @@ def render_page(
         sim_clicked = st.button("仿真", key="fs_sim_build", width="stretch")
 
     polarization = str(polarization).upper()
-    pol_label = POLARIZATION_LABELS.get(polarization, polarization)
 
     if sim_clicked and formula.strip():
         try:
@@ -380,30 +386,39 @@ def render_page(
         except Exception as exc:
             st.error(f"膜系展示失败: {exc}")
 
+    panel_head(
+        "材料 n / k 曲线",
+        css_prefix="fs-sim",
+        help_text=NK_CURVE_HELP_TEXT,
+    )
     if MAP2D_NK_FIG_KEY in st.session_state:
-        st.markdown(
-            '<div class="fs-sim-chart-title">材料 n / k 曲线</div>',
-            unsafe_allow_html=True,
-        )
         show_plotly_figure(st.session_state[MAP2D_NK_FIG_KEY], key="fs_sim_nk_chart")
 
+    compare_url = FREESNEL_COMPARE_PAGE_URL if fs_compare_artifact_available() else None
+    panel_head(
+        "光谱图",
+        css_prefix="fs-sim",
+        help_text=SPECTRAL_MAP_HELP_TEXT,
+        help_url=compare_url,
+        help_url_label="— 基准测试",
+    )
     if MAP2D_FIG_KEY in st.session_state:
-        st.markdown(
-            f'<div class="fs-sim-chart-title">Spectral map ({pol_label})</div>',
-            unsafe_allow_html=True,
-        )
-        st.caption("Ψ/Δ 由 s/p 反射系数比计算，与上方偏振选择无关。")
         show_figure(st.session_state[MAP2D_FIG_KEY])
 
+    panel_head(
+        "切片 @ 目标角度",
+        css_prefix="fs-sim",
+        help_text=SLICE_AT_ANGLE_HELP_TEXT,
+    )
     if SLICE_FIGS_KEY in st.session_state:
-        fig_wl, fig_ang = st.session_state[SLICE_FIGS_KEY]
-        st.markdown(
-            '<div class="fs-sim-chart-title">切片 @ 目标角度</div>',
-            unsafe_allow_html=True,
-        )
+        _, fig_ang = st.session_state[SLICE_FIGS_KEY]
         show_figure(fig_ang)
-        st.markdown(
-            '<div class="fs-sim-chart-title">切片 @ 目标波长</div>',
-            unsafe_allow_html=True,
-        )
+
+    panel_head(
+        "切片 @ 目标波长",
+        css_prefix="fs-sim",
+        help_text=SLICE_AT_WL_HELP_TEXT,
+    )
+    if SLICE_FIGS_KEY in st.session_state:
+        fig_wl, _ = st.session_state[SLICE_FIGS_KEY]
         show_figure(fig_wl)

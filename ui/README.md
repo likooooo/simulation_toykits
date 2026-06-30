@@ -4,7 +4,7 @@ Shared design tokens for Streamlit pages in this monorepo.
 
 ## `design_tokens.css`
 
-Single source of truth for CSS custom properties (colors, spacing, typography). Host pages read this file once per rerun and pass the contents as `tokens_css` into:
+Single source of truth for CSS custom properties (colors, spacing, typography). Host pages pass `tokens_path: Path`; packages read the file once per rerun and inject the contents as `tokens_css` into:
 
 - Page shell styles (`inject_*_styles`)
 - Custom component iframes (`simulation_db_panel`, `panel_section_head`)

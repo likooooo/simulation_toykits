@@ -1,7 +1,11 @@
-# Infrastructure（simulation_core 编译/测试/visualizer/GA）
--r simulation_core/3rdparty/infrastructure/requirements.txt
-
-# simulation_toykits 应用层（勿重复 infra 已有包，如 numpy/scipy/pytest/cmake）
+numpy<2
+matplotlib
+scipy
+PyYAML
+imageio
+imageio-ffmpeg
 streamlit>=1.33.0
 plotly
 pandas
+cryptography>=42.0.0
+pytest

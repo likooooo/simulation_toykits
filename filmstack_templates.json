@@ -1,0 +1,2273 @@
+{
+  "default_preset_id": "ar_qw_si",
+  "templates": [
+    {
+      "id": "ar_qw_si",
+      "label": "减反膜系",
+      "notes": "",
+      "material_path_keys": [
+        [
+          "rii",
+          "materials",
+          "other",
+          "mixed_gases",
+          "air_Ciddor.yml"
+        ],
+        [
+          "rii",
+          "materials",
+          "main",
+          "SiO2",
+          "SiO2_Arosa.yml"
+        ],
+        [
+          "rii",
+          "materials",
+          "main",
+          "Ta2O5",
+          "Ta2O5_Cheikh-amorphous-3.28-8-450.yml"
+        ],
+        [
+          "rii",
+          "materials",
+          "main",
+          "Si",
+          "Si_Aspnes.yml"
+        ]
+      ],
+      "required_material_names": [
+        "SiO2_Arosa",
+        "Si_Aspnes",
+        "Ta2O5_Cheikh-amorphous-3.28-8-450",
+        "air_Ciddor"
+      ],
+      "sim": {},
+      "stack": {
+        "type": "formula",
+        "formula": "air_Ciddor 0 (SiO2_Arosa 0.0994 Ta2O5_Cheikh-amorphous-3.28-8-450 0.06732)^2 Si_Aspnes 0"
+      }
+    },
+    {
+      "id": "bragg_mirror",
+      "label": "布拉格反射镜",
+      "notes": "",
+      "material_path_keys": [
+        [
+          "rii",
+          "materials",
+          "other",
+          "mixed_gases",
+          "air_Ciddor.yml"
+        ],
+        [
+          "rii",
+          "materials",
+          "main",
+          "Si",
+          "Si_Aspnes.yml"
+        ]
+      ],
+      "required_material_names": [
+        "air_Ciddor",
+        "Si_Aspnes"
+      ],
+      "sim": {},
+      "stack": {
+        "type": "formula",
+        "formula": "air_Ciddor 0.00000 (H 0.09167 1.5 0.0 air_Ciddor 0.11733)^8 Si_Aspnes 0.00000"
+      }
+    },
+    {
+      "id": "optical_filter",
+      "label": "光学滤光片",
+      "notes": "",
+      "material_path_keys": [
+        [
+          "rii",
+          "materials",
+          "other",
+          "mixed_gases",
+          "air_Ciddor.yml"
+        ],
+        [
+          "rii",
+          "materials",
+          "main",
+          "Si",
+          "Si_Aspnes.yml"
+        ]
+      ],
+      "required_material_names": [
+        "Si_Aspnes",
+        "air_Ciddor"
+      ],
+      "sim": {},
+      "stack": {
+        "type": "formula",
+        "formula": "air_Ciddor 0 air_Ciddor 0.1 (H 0.083 1.5 0 L 0.126 1.5 0)^5 Exit 0.126 1.0 0 Si_Aspnes 0"
+      }
+    },
+    {
+      "id": "fabry_perot",
+      "label": "FP 共振腔",
+      "notes": "",
+      "material_path_keys": [
+        [
+          "rii",
+          "materials",
+          "other",
+          "mixed_gases",
+          "air_Ciddor.yml"
+        ],
+        [
+          "rii",
+          "materials",
+          "main",
+          "Si",
+          "Si_Aspnes.yml"
+        ]
+      ],
+      "required_material_names": [
+        "Si_Aspnes",
+        "air_Ciddor"
+      ],
+      "sim": {},
+      "stack": {
+        "type": "formula",
+        "formula": "air_Ciddor 0 Mirror 0.01 3.0 0 air_Ciddor 0.25 Mirror 0.01 3.0 0 Si_Aspnes 0"
+      }
+    },
+    {
+      "id": "oled_ito_al",
+      "label": "OLED 栈",
+      "notes": "",
+      "material_path_keys": [
+        [
+          "og",
+          "materials",
+          "oxides",
+          "ITO",
+          "ito.yml"
+        ],
+        [
+          "og",
+          "materials",
+          "small_molecules",
+          "NPD.yml"
+        ],
+        [
+          "og",
+          "materials",
+          "small_molecules",
+          "Alq3.yml"
+        ],
+        [
+          "og",
+          "materials",
+          "small_molecules",
+          "TPBi.yml"
+        ],
+        [
+          "rii",
+          "materials",
+          "main",
+          "LiF.yml"
+        ],
+        [
+          "og",
+          "materials",
+          "metal",
+          "Al",
+          "std.yml"
+        ]
+      ],
+      "required_material_names": [
+        "Alq3",
+        "LiF",
+        "NPD",
+        "TPBi",
+        "ito",
+        "std"
+      ],
+      "sim": {},
+      "stack": {
+        "type": "formula",
+        "formula": "ito 0 ito 0.15 NPD 0.04 Alq3 0.03 TPBi 0.03 LiF 0.01 std 0.05 std 0"
+      }
+    },
+    {
+      "id": "spr_bk7_cr_au",
+      "label": "SPR 金属膜",
+      "notes": "",
+      "material_path_keys": [],
+      "required_material_names": [],
+      "sim": {},
+      "stack": {
+        "type": "formula",
+        "formula": "BK7 0 1.517 0 Cr 0.005 3.719 4.362 Au 0.03 0.13 3.162 air 0 1.0 0"
+      }
+    },
+    {
+      "id": "paper_sio2_si",
+      "label": "椭偏基准",
+      "notes": "",
+      "material_path_keys": [],
+      "required_material_names": [],
+      "sim": {},
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 SiO2 0.05 1.46 0 Si 0 3.87 0.02"
+      }
+    },
+    {
+      "id": "fs_wide_bp",
+      "label": "fs_宽谱红外带通镜",
+      "notes": "dielectric.scm wide-bp",
+      "material_path_keys": [],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 2.0,
+        "wl_to_um": 7.0,
+        "target_wl_um": 4.5,
+        "target_ang_deg": 0,
+        "polarization": "UNPOLARIZED"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 ZnS 0.52864 2.2 0 Ge 0.17896 4.2 0 ZnS 0.25012 2.2 0 Ge 0.12317 4.2 0 ZnS 0.29415 2.2 0 Ge 0.15686 4.2 0 ZnS 0.2656 2.2 0 Ge 0.13434 4.2 0 ZnS 0.26604 2.2 0 Ge 0.14763 4.2 0 ZnS 0.2896 2.2 0 Ge 0.13304 4.2 0 ZnS 0.25622 2.2 0 Ge 0.16516 4.2 0 ZnS 0.30719 2.2 0 Ge 0.12525 4.2 0 ZnS 0.25428 2.2 0 Ge 0.15014 4.2 0 ZnS 0.16855 2.2 0 Ge 0.06854 4.2 0 ZnS 0.23265 2.2 0 Ge 0.12548 4.2 0 ZnS 0.23801 2.2 0 Ge 0.13825 4.2 0 ZnS 0.26821 2.2 0 Ge 0.09828 4.2 0 ZnS 0.13358 2.2 0 Ge 0.12531 4.2 0 ZnS 0.22472 2.2 0 Ge 0.04079 4.2 0 ZnS 0.56495 2.2 0 Ge 0.39852 4.2 0 ZnS 0.71047 2.2 0 Ge 0.36001 4.2 0 ZnS 0.72486 2.2 0 Ge 0.35308 4.2 0 ZnS 0.71852 2.2 0 Ge 0.35823 4.2 0 ZnS 0.70926 2.2 0 Ge 0.37042 4.2 0 ZnS 0.70503 2.2 0 Ge 0.38228 4.2 0 ZnS 0.72006 2.2 0 Ge 0.41285 4.2 0 ZnS 0.76147 2.2 0 Ge 0.0486 4.2 0 ZnS 0.09733 2.2 0 Ge 0 4.0 0"
+      }
+    },
+    {
+      "id": "fs_cold_mirror_jk",
+      "label": "fs_冷镜 JK参考",
+      "notes": "",
+      "material_path_keys": [],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 0.3,
+        "wl_to_um": 1.1,
+        "target_wl_um": 0.55,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 SiO2 0.18836 1.46 0.0 (TiO2 0.02292 2.40 0.0 SiO2 0.07534 1.46 0.0 TiO2 0.02292 2.40 0.0)^5 (TiO2 0.02865 2.40 0.0 SiO2 0.09418 1.46 0.0 TiO2 0.02865 2.40 0.0)^5 (TiO2 0.03438 2.40 0.0 SiO2 0.11301 1.46 0.0 TiO2 0.03438 2.40 0.0)^5 glass 0 1.52 0.0"
+      }
+    },
+    {
+      "id": "fs_hl7_mirror",
+      "label": "fs_介质反射镜 七层高低膜",
+      "notes": "",
+      "material_path_keys": [],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 0.4,
+        "wl_to_um": 0.7,
+        "target_wl_um": 0.55,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 H 0.05729 2.4 0.0 L 0.09418 1.46 0.0 H 0.05729 2.4 0.0 L 0.09418 1.46 0.0 H 0.05729 2.4 0.0 L 0.09418 1.46 0.0 H 0.05729 2.4 0.0 L 0.09418 1.46 0.0 H 0.05729 2.4 0.0 L 0.09418 1.46 0.0 H 0.05729 2.4 0.0 L 0.09418 1.46 0.0 H 0.05729 2.4 0.0 L 0.09418 1.46 0.0 H 0.05729 2.4 0.0 glass 0 1.52 0.0"
+      }
+    },
+    {
+      "id": "fs_cold_mirror_tc1",
+      "label": "fs_冷镜 TFCalc参考1",
+      "notes": "",
+      "material_path_keys": [],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 0.38,
+        "wl_to_um": 1.0,
+        "target_wl_um": 0.55,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 TIO2 0.03440 2.4 0.0 SIO2 0.15861 1.46 0.0 TIO2 0.05324 2.4 0.0 SIO2 0.12887 1.46 0.0 TIO2 0.06777 2.4 0.0 SIO2 0.10219 1.46 0.0 TIO2 0.07913 2.4 0.0 SIO2 0.09719 1.46 0.0 TIO2 0.05307 2.4 0.0 SIO2 0.16254 1.46 0.0 TIO2 0.03616 2.4 0.0 SIO2 0.06656 1.46 0.0 TIO2 0.04648 2.4 0.0 SIO2 0.08718 1.46 0.0 TIO2 0.04892 2.4 0.0 SIO2 0.08252 1.46 0.0 TIO2 0.04256 2.4 0.0 SIO2 0.07313 1.46 0.0 TIO2 0.04397 2.4 0.0 SIO2 0.10257 1.46 0.0 TIO2 0.04421 2.4 0.0 glass 0 1.52 0.0"
+      }
+    },
+    {
+      "id": "fs_cold_mirror_tc2",
+      "label": "fs_冷镜 TFCalc参考2",
+      "notes": "",
+      "material_path_keys": [],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 0.38,
+        "wl_to_um": 2.0,
+        "target_wl_um": 0.55,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 TIO2 0.01903 2.4 0.0 SIO2 0.19113 1.46 0.0 TIO2 0.05130 2.4 0.0 SIO2 0.13738 1.46 0.0 TIO2 0.06186 2.4 0.0 SIO2 0.09964 1.46 0.0 TIO2 0.08148 2.4 0.0 SIO2 0.10208 1.46 0.0 TIO2 0.05315 2.4 0.0 SIO2 0.16237 1.46 0.0 TIO2 0.03685 2.4 0.0 SIO2 0.07041 1.46 0.0 TIO2 0.03955 2.4 0.0 SIO2 0.08877 1.46 0.0 TIO2 0.05197 2.4 0.0 SIO2 0.08641 1.46 0.0 TIO2 0.05105 2.4 0.0 SIO2 0.06636 1.46 0.0 TIO2 0.02839 2.4 0.0 SIO2 0.12404 1.46 0.0 TIO2 0.03376 2.4 0.0 glass 0 1.52 0.0"
+      }
+    },
+    {
+      "id": "fs_protected_al_sio",
+      "label": "fs_保护铝镜（dielectric 保护层）",
+      "notes": "",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "al.yml"
+        ]
+      ],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 0.3,
+        "wl_to_um": 0.9,
+        "target_wl_um": 0.6,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 dielectric 0.18103 1.45 0.0 al 0"
+      }
+    },
+    {
+      "id": "fs_enhanced_al_1hl",
+      "label": "fs_增强铝镜 一对高低膜",
+      "notes": "",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "al.yml"
+        ]
+      ],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 0.3,
+        "wl_to_um": 0.9,
+        "target_wl_um": 0.55,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 H 0.05729 2.40 0.0 L 0.09418 1.46 0.0 al 0"
+      }
+    },
+    {
+      "id": "fs_hot_mirror_2",
+      "label": "fs_热镜 专利Ag叠层",
+      "notes": "",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "tio2.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "ag.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "cor7059.yml"
+        ]
+      ],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 0.3,
+        "wl_to_um": 2.0,
+        "target_wl_um": 1.0,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 tio2 0.018 ag 0.018 tio2 0.018 cor7059 1000 air 0"
+      }
+    },
+    {
+      "id": "fs_metal_bp",
+      "label": "fs_金属介质带通片",
+      "notes": "",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "au.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "bk7.yml"
+        ]
+      ],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 0.7,
+        "wl_to_um": 1.0,
+        "target_wl_um": 0.87,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 tio2 0.10194 2.45 0.0 au 0.02497 sio2 0.12787 1.4 0.0 tio2 0.09424 2.45 0.0 sio2 0.30257 1.4 0.0 tio2 0.09424 2.45 0.0 sio2 0.12194 1.4 0.0 au 0.02333 bk7 0 1.5164 0.0"
+      }
+    },
+    {
+      "id": "fs_dual_bp",
+      "label": "fs_金属介质双带通片",
+      "notes": "",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "au.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "bk7.yml"
+        ]
+      ],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 0.7,
+        "wl_to_um": 1.0,
+        "target_wl_um": 0.92,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 au 0.01076 sio2 0.10201 1.4 0.0 tio2 0.09525 2.4 0.0 sio2 0.01049 1.4 0.0 au 0.00416 sio2 0.27066 1.4 0.0 tio2 0.09369 2.4 0.0 sio2 0.15240 1.4 0.0 tio2 0.03924 2.4 0.0 sio2 0.04967 1.4 0.0 tio2 0.09633 2.4 0.0 sio2 0.11539 1.4 0.0 au 0.01658 bk7 0 1.5164 0.0"
+      }
+    },
+    {
+      "id": "fs_al_mirror",
+      "label": "fs_铝反射镜 FreeSnell#016",
+      "notes": "",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "al.yml"
+        ]
+      ],
+      "required_material_names": [
+        "al"
+      ],
+      "sim": {
+        "wl_from_um": 0.4,
+        "wl_to_um": 1.1,
+        "target_wl_um": 0.75,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 al 0"
+      }
+    },
+    {
+      "id": "fs_au_mirror",
+      "label": "fs_金反射镜 45镀层",
+      "notes": "",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "au.yml"
+        ]
+      ],
+      "required_material_names": [
+        "au"
+      ],
+      "sim": {
+        "wl_from_um": 0.4,
+        "wl_to_um": 24.0,
+        "target_wl_um": 1.0,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 au 0"
+      }
+    },
+    {
+      "id": "fs_protected_al_bare",
+      "label": "fs_裸铝反射镜",
+      "notes": "",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "al.yml"
+        ]
+      ],
+      "required_material_names": [
+        "al"
+      ],
+      "sim": {
+        "wl_from_um": 0.4,
+        "wl_to_um": 1.1,
+        "target_wl_um": 0.75,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 al 0"
+      }
+    },
+    {
+      "id": "fs_hdpe_50",
+      "label": "fs_HDPE薄膜 50µm 相干",
+      "notes": "polyethylene.scm",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 0.5,
+        "wl_to_um": 15.0,
+        "target_wl_um": 7.75,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "substrate 0 1.0 0 hdpe 50 substrate 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_hdpe_14",
+      "label": "fs_HDPE薄膜 14µm 相干",
+      "notes": "polyethylene.scm",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 4.5,
+        "wl_to_um": 26.0,
+        "target_wl_um": 15.25,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "substrate 0 1.0 0 hdpe 14 substrate 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_pe_33",
+      "label": "fs_PE薄膜 33µm 非相干",
+      "notes": "polyethylene.scm pe-33",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "pe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "pe"
+      ],
+      "sim": {
+        "wl_from_um": 0.2,
+        "wl_to_um": 20.0,
+        "target_wl_um": 10.1,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 pe 33 air 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_enhanced_al_2hl",
+      "label": "fs_增强铝镜 两对高低膜",
+      "notes": "metallic.scm enhanced-al",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "al.yml"
+        ]
+      ],
+      "required_material_names": [
+        "al"
+      ],
+      "sim": {
+        "wl_from_um": 0.3,
+        "wl_to_um": 0.9,
+        "target_wl_um": 0.55,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 H 0.05729 2.40 0.0 L 0.09418 1.46 0.0 H 0.05729 2.40 0.0 L 0.09418 1.46 0.0 al 0"
+      }
+    },
+    {
+      "id": "fs_enhanced_al_3hl",
+      "label": "fs_增强铝镜 三对高低膜",
+      "notes": "metallic.scm enhanced-al",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "al.yml"
+        ]
+      ],
+      "required_material_names": [
+        "al"
+      ],
+      "sim": {
+        "wl_from_um": 0.3,
+        "wl_to_um": 0.9,
+        "target_wl_um": 0.55,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 H 0.05729 2.40 0.0 L 0.09418 1.46 0.0 H 0.05729 2.40 0.0 L 0.09418 1.46 0.0 H 0.05729 2.40 0.0 L 0.09418 1.46 0.0 al 0"
+      }
+    },
+    {
+      "id": "fs_protected_al_n2",
+      "label": "fs_保护铝镜 高折射率",
+      "notes": "metallic.scm protected-al",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "al.yml"
+        ]
+      ],
+      "required_material_names": [
+        "al"
+      ],
+      "sim": {
+        "wl_from_um": 0.3,
+        "wl_to_um": 0.9,
+        "target_wl_um": 0.6,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 dielectric 0.12375 2.0 0.0 al 0"
+      }
+    },
+    {
+      "id": "fs_sio2_al",
+      "label": "fs_Si2O3 保护铝镜",
+      "notes": "metallic.scm Si2O3-Al",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "al.yml"
+        ]
+      ],
+      "required_material_names": [
+        "al"
+      ],
+      "sim": {
+        "wl_from_um": 0.4,
+        "wl_to_um": 0.75,
+        "target_wl_um": 0.55,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 Si2O3 0.16667 1.65 0.0 al 0"
+      }
+    },
+    {
+      "id": "fs_rdad",
+      "label": "fs_蓝膜反射镜 RDAD",
+      "notes": "metallic.scm r-d-a-d",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "mgf2.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "cr.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "ag.yml"
+        ]
+      ],
+      "required_material_names": [
+        "mgf2",
+        "cr",
+        "ag"
+      ],
+      "sim": {
+        "wl_from_um": 0.37,
+        "wl_to_um": 0.8,
+        "target_wl_um": 0.55,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 mgf2 0.32 cr 0.006 mgf2 0.32 ag 0"
+      }
+    },
+    {
+      "id": "fs_film_flat_50um",
+      "label": "fs_平面膜 50µm",
+      "notes": "coherence.scm film-flat",
+      "sim": {
+        "wl_from_um": 2.5,
+        "wl_to_um": 25.0,
+        "target_wl_um": 11.0,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 film 50 1.54 0 air 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_ir_ar_growing",
+      "label": "fs_红外增透膜 ZnS/Ge",
+      "notes": "dielectric.scm anti",
+      "material_path_keys": [],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 7.7,
+        "wl_to_um": 12.3,
+        "target_wl_um": 10.0,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 ZnS 1.07697 2.2 0.0 Ge 0.62903 4.2 0.0 ZnS 0.45749 2.2 0.0 Ge 0.13155 4.2 0.0 ZnS 1.23492 2.2 0.0 Ge 1.14259 4.2 0.0 ZnS 2.59054 2.2 0.0 Ge 0.08175 4.2 0.0 ZnS 1.82750 2.2 0.0 Ge 0.08460 4.2 0.0 ZnS 0.56334 2.2 0.0 Ge 0.28597 4.2 0.0 ZnS 0.15714 2.2 0.0 Ge 0 4.0 0.0"
+      }
+    },
+    {
+      "id": "fs_immersed_polarizer",
+      "label": "fs_浸没广角偏振器",
+      "notes": "dielectric.scm immersed",
+      "material_path_keys": [],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 0.613,
+        "wl_to_um": 0.653,
+        "ang_from_deg": 51,
+        "ang_to_deg": 71,
+        "target_wl_um": 0.643,
+        "target_ang_deg": 61,
+        "polarization": "TM"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "BK7 0 1.5164 0.0 TiO2 0.08362 2.35 0.0 SiO2 0.07491 1.45 0.0 TiO2 0.09486 2.35 0.0 SiO2 0.11909 1.45 0.0 TiO2 0.09021 2.35 0.0 SiO2 0.12948 1.45 0.0 TiO2 0.08187 2.35 0.0 SiO2 0.12304 1.45 0.0 TiO2 0.08403 2.35 0.0 SiO2 0.13823 1.45 0.0 TiO2 0.08134 2.35 0.0 SiO2 0.13115 1.45 0.0 TiO2 0.08385 2.35 0.0 SiO2 0.15221 1.45 0.0 TiO2 0.08048 2.35 0.0 SiO2 0.12678 1.45 0.0 TiO2 0.05995 2.35 0.0 BK7 0 1.5164 0.0"
+      }
+    },
+    {
+      "id": "fs_prism_polarizer",
+      "label": "fs_薄膜偏振分光镜",
+      "notes": "dielectric.scm prism",
+      "material_path_keys": [],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 0.4,
+        "wl_to_um": 0.7,
+        "ang_from_deg": 65,
+        "ang_to_deg": 75,
+        "target_wl_um": 0.55,
+        "target_ang_deg": 70,
+        "polarization": "TE"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "substrate 0 1.85 0.0 H 0.01116 2.35 0.0 L 0.04887 1.45 0.0 H 0.03594 2.35 0.0 L 0.06858 1.45 0.0 H 0.03950 2.35 0.0 L 0.07977 1.45 0.0 H 0.04620 2.35 0.0 L 0.09661 1.45 0.0 H 0.04971 2.35 0.0 L 0.10274 1.45 0.0 H 0.05049 2.35 0.0 L 0.10274 1.45 0.0 H 0.04971 2.35 0.0 L 0.09661 1.45 0.0 H 0.04620 2.35 0.0 L 0.07977 1.45 0.0 H 0.03950 2.35 0.0 L 0.06858 1.45 0.0 H 0.03594 2.35 0.0 L 0.04887 1.45 0.0 H 0.01116 2.35 0.0 substrate 0 1.85 0.0"
+      }
+    },
+    {
+      "id": "fs_fig_2_2_a",
+      "label": "fs_六层减反膜 设计A",
+      "notes": "dielectric.scm fig.2.2",
+      "material_path_keys": [],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 0.4,
+        "wl_to_um": 0.9,
+        "target_wl_um": 0.5,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 L 0.09474 1.45 0.0 H 0.02038 2.3 0.0 L 0.00914 1.45 0.0 H 0.10745 2.3 0.0 L 0.02931 1.45 0.0 H 0.01728 2.3 0.0 glass 0 1.52 0.0"
+      }
+    },
+    {
+      "id": "fs_fig_2_2_b",
+      "label": "fs_六层减反膜 设计B",
+      "notes": "dielectric.scm fig.2.2",
+      "material_path_keys": [],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 0.4,
+        "wl_to_um": 0.9,
+        "target_wl_um": 0.5,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 L 0.10483 1.45 0.0 H 0.03859 2.3 0.0 L 0.01621 1.45 0.0 H 0.06000 2.3 0.0 L 0.03371 1.45 0.0 H 0.01848 2.3 0.0 glass 0 1.52 0.0"
+      }
+    },
+    {
+      "id": "fs_fig_2_5",
+      "label": "fs_八层减反膜",
+      "notes": "dielectric.scm fig.2.5",
+      "material_path_keys": [],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 0.4,
+        "wl_to_um": 0.8,
+        "target_wl_um": 0.5,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 L 0.09530 1.38 0.0 H 0.01690 2.3 0.0 L 0.00970 1.38 0.0 H 0.10410 2.3 0.0 L 0.00670 1.38 0.0 H 0.00810 2.3 0.0 L 0.02640 1.38 0.0 H 0.01410 2.3 0.0 glass 0 1.52 0.0"
+      }
+    },
+    {
+      "id": "fs_bb_hr_50deg",
+      "label": "fs_宽带高反镜 50°",
+      "notes": "dielectric.scm reflector-50",
+      "material_path_keys": [],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 0.4,
+        "wl_to_um": 0.8,
+        "target_wl_um": 0.6,
+        "target_ang_deg": 50,
+        "polarization": "TM"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 H 0.04935 2.35 0.0 L 0.08064 1.45 0.0 H 0.04596 2.35 0.0 L 0.09180 1.45 0.0 H 0.05159 2.35 0.0 L 0.08662 1.45 0.0 H 0.04616 2.35 0.0 L 0.09092 1.45 0.0 H 0.05349 2.35 0.0 L 0.09422 1.45 0.0 H 0.04662 2.35 0.0 L 0.08260 1.45 0.0 H 0.05226 2.35 0.0 L 0.10116 1.45 0.0 H 0.05686 2.35 0.0 L 0.10169 1.45 0.0 H 0.06351 2.35 0.0 L 0.12169 1.45 0.0 H 0.06147 2.35 0.0 L 0.11111 1.45 0.0 H 0.06321 2.35 0.0 L 0.12161 1.45 0.0 H 0.07153 2.35 0.0 L 0.11389 1.45 0.0 H 0.05542 2.35 0.0 L 0.10404 1.45 0.0 H 0.06996 2.35 0.0 L 0.13771 1.45 0.0 H 0.07117 2.35 0.0 L 0.14189 1.45 0.0 H 0.08296 2.35 0.0 L 0.14164 1.45 0.0 H 0.08536 2.35 0.0 L 0.12975 1.45 0.0 H 0.07202 2.35 0.0 L 0.17845 1.45 0.0 H 0.08310 2.35 0.0 L 0.15404 1.45 0.0 H 0.07435 2.35 0.0 L 0.15215 1.45 0.0 H 0.08056 2.35 0.0 L 0.17135 1.45 0.0 H 0.09787 2.35 0.0 glass 0 1.52 0.0"
+      }
+    },
+    {
+      "id": "fs_omni_mirror",
+      "label": "fs_全向介质反射镜",
+      "notes": "dielectric.scm omni-mirror",
+      "material_path_keys": [],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 6.0,
+        "wl_to_um": 20.0,
+        "ang_from_deg": 10,
+        "ang_to_deg": 89,
+        "target_wl_um": 13,
+        "target_ang_deg": 50,
+        "polarization": "UNPOLARIZED"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 H 0.39900 4.6 0.0 L 2.16533 1.6 0.0 H 0.69676 4.6 0.0 L 2.09740 1.6 0.0 H 0.70151 4.6 0.0 L 2.08958 1.6 0.0 H 0.70083 4.6 0.0 L 2.11233 1.6 0.0 H 0.69188 4.6 0.0 substrate 0 1.5442 0.0"
+      }
+    },
+    {
+      "id": "fs_enhanced_al_bare",
+      "label": "fs_增强铝镜 无保护层",
+      "notes": "metallic.scm enhanced-al",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "al.yml"
+        ]
+      ],
+      "required_material_names": [
+        "al"
+      ],
+      "sim": {
+        "wl_from_um": 0.3,
+        "wl_to_um": 0.9,
+        "target_wl_um": 0.55,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 al 0"
+      }
+    },
+    {
+      "id": "fs_zns_ot_1",
+      "label": "fs_ZnS减反色片 1/8膜",
+      "notes": "metallic.scm ZnS-colors",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "zns.yml"
+        ]
+      ],
+      "required_material_names": [
+        "zns"
+      ],
+      "sim": {
+        "wl_from_um": 0.3,
+        "wl_to_um": 0.9,
+        "target_wl_um": 0.5461,
+        "target_ang_deg": 0,
+        "polarization": "UNPOLARIZED"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 zns 0.028549713921 substrate 0 1.55 0.0"
+      }
+    },
+    {
+      "id": "fs_zns_ot_2",
+      "label": "fs_ZnS减反色片 2/8膜",
+      "notes": "metallic.scm ZnS-colors",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "zns.yml"
+        ]
+      ],
+      "required_material_names": [
+        "zns"
+      ],
+      "sim": {
+        "wl_from_um": 0.3,
+        "wl_to_um": 0.9,
+        "target_wl_um": 0.5461,
+        "target_ang_deg": 0,
+        "polarization": "UNPOLARIZED"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 zns 0.057099427842 substrate 0 1.55 0.0"
+      }
+    },
+    {
+      "id": "fs_zns_ot_3",
+      "label": "fs_ZnS减反色片 3/8膜",
+      "notes": "metallic.scm ZnS-colors",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "zns.yml"
+        ]
+      ],
+      "required_material_names": [
+        "zns"
+      ],
+      "sim": {
+        "wl_from_um": 0.3,
+        "wl_to_um": 0.9,
+        "target_wl_um": 0.5461,
+        "target_ang_deg": 0,
+        "polarization": "UNPOLARIZED"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 zns 0.085649141762 substrate 0 1.55 0.0"
+      }
+    },
+    {
+      "id": "fs_zns_ot_4",
+      "label": "fs_ZnS减反色片 4/8膜",
+      "notes": "metallic.scm ZnS-colors",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "zns.yml"
+        ]
+      ],
+      "required_material_names": [
+        "zns"
+      ],
+      "sim": {
+        "wl_from_um": 0.3,
+        "wl_to_um": 0.9,
+        "target_wl_um": 0.5461,
+        "target_ang_deg": 0,
+        "polarization": "UNPOLARIZED"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 zns 0.114198855683 substrate 0 1.55 0.0"
+      }
+    },
+    {
+      "id": "fs_zns_ot_5",
+      "label": "fs_ZnS减反色片 5/8膜",
+      "notes": "metallic.scm ZnS-colors",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "zns.yml"
+        ]
+      ],
+      "required_material_names": [
+        "zns"
+      ],
+      "sim": {
+        "wl_from_um": 0.3,
+        "wl_to_um": 0.9,
+        "target_wl_um": 0.5461,
+        "target_ang_deg": 0,
+        "polarization": "UNPOLARIZED"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 zns 0.142748569604 substrate 0 1.55 0.0"
+      }
+    },
+    {
+      "id": "fs_zns_ot_6",
+      "label": "fs_ZnS减反色片 6/8膜",
+      "notes": "metallic.scm ZnS-colors",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "zns.yml"
+        ]
+      ],
+      "required_material_names": [
+        "zns"
+      ],
+      "sim": {
+        "wl_from_um": 0.3,
+        "wl_to_um": 0.9,
+        "target_wl_um": 0.5461,
+        "target_ang_deg": 0,
+        "polarization": "UNPOLARIZED"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 zns 0.171298283525 substrate 0 1.55 0.0"
+      }
+    },
+    {
+      "id": "fs_zns_ot_7",
+      "label": "fs_ZnS减反色片 7/8膜",
+      "notes": "metallic.scm ZnS-colors",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "zns.yml"
+        ]
+      ],
+      "required_material_names": [
+        "zns"
+      ],
+      "sim": {
+        "wl_from_um": 0.3,
+        "wl_to_um": 0.9,
+        "target_wl_um": 0.5461,
+        "target_ang_deg": 0,
+        "polarization": "UNPOLARIZED"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 zns 0.199847997445 substrate 0 1.55 0.0"
+      }
+    },
+    {
+      "id": "fs_zns_ot_8",
+      "label": "fs_ZnS减反色片 8/8膜",
+      "notes": "metallic.scm ZnS-colors",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "zns.yml"
+        ]
+      ],
+      "required_material_names": [
+        "zns"
+      ],
+      "sim": {
+        "wl_from_um": 0.3,
+        "wl_to_um": 0.9,
+        "target_wl_um": 0.5461,
+        "target_ang_deg": 0,
+        "polarization": "UNPOLARIZED"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 zns 0.228397711366 substrate 0 1.55 0.0"
+      }
+    },
+    {
+      "id": "fs_ruby_glass_2um",
+      "label": "fs_金红宝石颗粒膜 低掺杂",
+      "notes": "granular.scm gold-ruby-glass (Maxwell-Garnett [q au glass 1.5])",
+      "incoherent": true,
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "au.yml"
+        ]
+      ],
+      "required_material_names": [
+        "au"
+      ],
+      "sim": {
+        "wl_from_um": 0.38,
+        "wl_to_um": 0.78,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 [2e-06 au glass 1.5] 4000.00000 air 0 1.0 0.0"
+      }
+    },
+    {
+      "id": "fs_ruby_glass_8um",
+      "label": "fs_金红宝石颗粒膜 中掺杂",
+      "notes": "granular.scm gold-ruby-glass (Maxwell-Garnett [q au glass 1.5])",
+      "incoherent": true,
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "au.yml"
+        ]
+      ],
+      "required_material_names": [
+        "au"
+      ],
+      "sim": {
+        "wl_from_um": 0.38,
+        "wl_to_um": 0.78,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 [8e-06 au glass 1.5] 4000.00000 air 0 1.0 0.0"
+      }
+    },
+    {
+      "id": "fs_ruby_glass_14um",
+      "label": "fs_金红宝石颗粒膜 高掺杂",
+      "notes": "granular.scm gold-ruby-glass (Maxwell-Garnett [q au glass 1.5])",
+      "incoherent": true,
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "au.yml"
+        ]
+      ],
+      "required_material_names": [
+        "au"
+      ],
+      "sim": {
+        "wl_from_um": 0.38,
+        "wl_to_um": 0.78,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 [1.4e-05 au glass 1.5] 4000.00000 air 0 1.0 0.0"
+      }
+    },
+    {
+      "id": "fs_polymer_ag",
+      "label": "fs_聚合物颗粒膜 Ag",
+      "notes": "granular.scm polymer-ag (Maxwell-Garnett q=1/6,1/12)",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "ag.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "bk7.yml"
+        ]
+      ],
+      "required_material_names": [
+        "ag",
+        "bk7"
+      ],
+      "sim": {
+        "wl_from_um": 0.3,
+        "wl_to_um": 1.5,
+        "target_ang_deg": 35,
+        "polarization": "UNPOLARIZED"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 ([0.083333 ag polymer 1.5 0.0] 0.02310 [0.166667 ag polymer 1.5 0.0] 0.10780 [0.083333 ag polymer 1.5 0.0] 0.04620 polymer 0.10780 1.5 0.0 [0.083333 ag polymer 1.5 0.0] 0.02310)^4 [0.083333 ag polymer 1.5 0.0] 0.02310 [0.166667 ag polymer 1.5 0.0] 0.10780 [0.083333 ag polymer 1.5 0.0] 0.04620 bk7 0"
+      }
+    },
+    {
+      "id": "fs_ag_mgo_3nm",
+      "label": "fs_颗粒膜 Ag/MgO 3nm",
+      "notes": "granular.scm AgMgO (MG q=0.67, ns=1)",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "ag.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "mgo.yml"
+        ]
+      ],
+      "required_material_names": [
+        "ag",
+        "mgo"
+      ],
+      "sim": {
+        "wl_from_um": 0.276,
+        "wl_to_um": 1.24,
+        "target_ang_deg": 45,
+        "polarization": "TM"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 [0.67 ag air 1.0 0.0] 0.00300 mgo 0"
+      }
+    },
+    {
+      "id": "fs_ag_mgo_p",
+      "label": "fs_颗粒膜 Ag/MgO p偏振",
+      "notes": "granular.scm AgMgO (MG q=0.67, ns=1)",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "ag.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "mgo.yml"
+        ]
+      ],
+      "required_material_names": [
+        "ag",
+        "mgo"
+      ],
+      "sim": {
+        "wl_from_um": 0.248,
+        "wl_to_um": 0.826,
+        "target_ang_deg": 45,
+        "polarization": "TM"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 [0.67 ag air 1.0 0.0] 0.00300 mgo 0.001 air 0 1.0 0.0"
+      }
+    },
+    {
+      "id": "fs_ag_mgo_s",
+      "label": "fs_颗粒膜 Ag/MgO s偏振",
+      "notes": "granular.scm AgMgO-s (MG q=0.67, ns=1)",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "ag.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "mgo.yml"
+        ]
+      ],
+      "required_material_names": [
+        "ag",
+        "mgo"
+      ],
+      "sim": {
+        "wl_from_um": 0.248,
+        "wl_to_um": 0.826,
+        "target_ang_deg": 45,
+        "polarization": "TE"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 [0.67 ag air 1.0 0.0] 0.00300 mgo 0"
+      }
+    },
+    {
+      "id": "fs_ag_mgo_ang_mgo",
+      "label": "fs_MgO基底 角扫",
+      "notes": "granular.scm AgMgO-ang",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "mgo.yml"
+        ]
+      ],
+      "required_material_names": [
+        "mgo"
+      ],
+      "sim": {
+        "ang_from_deg": 0,
+        "ang_to_deg": 90,
+        "target_ang_deg": 45,
+        "polarization": "UNPOLARIZED",
+        "target_wl_um": 0.495936743
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 mgo 0"
+      }
+    },
+    {
+      "id": "fs_ag_mgo_ang_film",
+      "label": "fs_颗粒膜 Ag/MgO 角扫",
+      "notes": "granular.scm AgMgO-ang (MG q=0.67, ns=1)",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "ag.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "mgo.yml"
+        ]
+      ],
+      "required_material_names": [
+        "ag",
+        "mgo"
+      ],
+      "sim": {
+        "ang_from_deg": 0,
+        "ang_to_deg": 90,
+        "target_wl_um": 0.495936743,
+        "target_ang_deg": 45,
+        "polarization": "TM"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 [0.67 ag air 1.0 0.0] 0.00300 mgo 0"
+      }
+    },
+    {
+      "id": "fs_nobles_ag",
+      "label": "fs_颗粒膜贵金属 Ag",
+      "notes": "granular.scm nobles (MG q=0.67, ns=1)",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "ag.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "mgo.yml"
+        ]
+      ],
+      "required_material_names": [
+        "ag",
+        "mgo"
+      ],
+      "sim": {
+        "wl_from_um": 0.248,
+        "wl_to_um": 0.826,
+        "target_ang_deg": 45.0,
+        "polarization": "TM"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 [0.67 ag air 1.0 0.0] 0.003 mgo 0"
+      }
+    },
+    {
+      "id": "fs_nobles_au",
+      "label": "fs_颗粒膜贵金属 Au",
+      "notes": "granular.scm nobles (MG q=0.67, ns=1)",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "au.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "mgo.yml"
+        ]
+      ],
+      "required_material_names": [
+        "au",
+        "mgo"
+      ],
+      "sim": {
+        "wl_from_um": 0.248,
+        "wl_to_um": 0.826,
+        "target_ang_deg": 45.0,
+        "polarization": "TM"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 [0.67 au air 1.0 0.0] 0.003 mgo 0"
+      }
+    },
+    {
+      "id": "fs_nobles_cu",
+      "label": "fs_颗粒膜贵金属 Cu",
+      "notes": "granular.scm nobles (MG q=0.67, ns=1)",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "cu.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "mgo.yml"
+        ]
+      ],
+      "required_material_names": [
+        "cu",
+        "mgo"
+      ],
+      "sim": {
+        "wl_from_um": 0.248,
+        "wl_to_um": 0.826,
+        "target_ang_deg": 45.0,
+        "polarization": "TM"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 [0.67 cu air 1.0 0.0] 0.003 mgo 0"
+      }
+    },
+    {
+      "id": "fs_nobles_al",
+      "label": "fs_颗粒膜贵金属 Al",
+      "notes": "granular.scm nobles (MG q=0.67, ns=1)",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "al.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "mgo.yml"
+        ]
+      ],
+      "required_material_names": [
+        "al",
+        "mgo"
+      ],
+      "sim": {
+        "wl_from_um": 0.248,
+        "wl_to_um": 0.826,
+        "target_ang_deg": 45.0,
+        "polarization": "TM"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 [0.67 al air 1.0 0.0] 0.003 mgo 0"
+      }
+    },
+    {
+      "id": "fs_transitions_co",
+      "label": "fs_颗粒膜过渡金属 Co",
+      "notes": "granular.scm transitions (MG q=0.67, ns=1)",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "co.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "mgo.yml"
+        ]
+      ],
+      "required_material_names": [
+        "co",
+        "mgo"
+      ],
+      "sim": {
+        "wl_from_um": 0.248,
+        "wl_to_um": 0.826,
+        "target_ang_deg": 45.0,
+        "polarization": "TM"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 [0.67 co air 1.0 0.0] 0.003 mgo 0"
+      }
+    },
+    {
+      "id": "fs_transitions_pt",
+      "label": "fs_颗粒膜过渡金属 Pt",
+      "notes": "granular.scm transitions (MG q=0.67, ns=1)",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "pt.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "mgo.yml"
+        ]
+      ],
+      "required_material_names": [
+        "mgo",
+        "pt"
+      ],
+      "sim": {
+        "wl_from_um": 0.248,
+        "wl_to_um": 0.826,
+        "target_ang_deg": 45.0,
+        "polarization": "TM"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 [0.67 pt air 1.0 0.0] 0.003 mgo 0"
+      }
+    },
+    {
+      "id": "fs_transitions_pd",
+      "label": "fs_颗粒膜过渡金属 Pd",
+      "notes": "granular.scm transitions (MG q=0.67, ns=1)",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "pd.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "mgo.yml"
+        ]
+      ],
+      "required_material_names": [
+        "mgo",
+        "pd"
+      ],
+      "sim": {
+        "wl_from_um": 0.248,
+        "wl_to_um": 0.826,
+        "target_ang_deg": 45.0,
+        "polarization": "TM"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 [0.67 pd air 1.0 0.0] 0.003 mgo 0"
+      }
+    },
+    {
+      "id": "fs_transitions_ti",
+      "label": "fs_颗粒膜过渡金属 Ti",
+      "notes": "granular.scm transitions (MG q=0.67, ns=1)",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "ti.yml"
+        ],
+        [
+          "fs",
+          "materials",
+          "mgo.yml"
+        ]
+      ],
+      "required_material_names": [
+        "mgo",
+        "ti"
+      ],
+      "sim": {
+        "wl_from_um": 0.248,
+        "wl_to_um": 0.826,
+        "target_ang_deg": 45.0,
+        "polarization": "TM"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 [0.67 ti air 1.0 0.0] 0.003 mgo 0"
+      }
+    },
+    {
+      "id": "fs_pe_1x14_co",
+      "label": "fs_PE薄膜 14µm×1 相干",
+      "notes": "coherence.scm PE-3x14",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 3.0,
+        "wl_to_um": 15.0,
+        "target_ang_deg": 4.0,
+        "polarization": "UNPOLARIZED"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 (air 1000 1.0 0 hdpe 14)^1 air 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_pe_1x14_inc",
+      "label": "fs_PE薄膜 14µm×1 非相干",
+      "notes": "coherence.scm PE-3x14 # TODO: layer*",
+      "incoherent": true,
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 3.0,
+        "wl_to_um": 15.0,
+        "target_ang_deg": 4.0,
+        "polarization": "UNPOLARIZED"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 (air 1000 1.0 0 hdpe 14)^1 air 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_pe_2x14_co",
+      "label": "fs_PE薄膜 14µm×2 相干",
+      "notes": "coherence.scm PE-3x14",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 3.0,
+        "wl_to_um": 15.0,
+        "target_ang_deg": 4.0,
+        "polarization": "UNPOLARIZED"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 (air 1000 1.0 0 hdpe 14)^2 air 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_pe_2x14_inc",
+      "label": "fs_PE薄膜 14µm×2 非相干",
+      "notes": "coherence.scm PE-3x14 # TODO: layer*",
+      "incoherent": true,
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 3.0,
+        "wl_to_um": 15.0,
+        "target_ang_deg": 4.0,
+        "polarization": "UNPOLARIZED"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 (air 1000 1.0 0 hdpe 14)^2 air 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_pe_3x14_co",
+      "label": "fs_PE薄膜 14µm×3 相干",
+      "notes": "coherence.scm PE-3x14",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 3.0,
+        "wl_to_um": 15.0,
+        "target_ang_deg": 4.0,
+        "polarization": "UNPOLARIZED"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 (air 1000 1.0 0 hdpe 14)^3 air 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_pe_3x14_inc",
+      "label": "fs_PE薄膜 14µm×3 非相干",
+      "notes": "coherence.scm PE-3x14 # TODO: layer*",
+      "incoherent": true,
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 3.0,
+        "wl_to_um": 15.0,
+        "target_ang_deg": 4.0,
+        "polarization": "UNPOLARIZED"
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 (air 1000 1.0 0 hdpe 14)^3 air 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_cloud_h2o",
+      "label": "fs_云雾模型 液态水",
+      "notes": "coherence.scm # TODO: layer*+granular — 阻塞于 layer* 引擎未实现",
+      "incoherent": true,
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "h2o.yml"
+        ]
+      ],
+      "required_material_names": [
+        "h2o"
+      ],
+      "sim": {
+        "wl_from_um": 4.5,
+        "wl_to_um": 40.0,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 h2o 250.0 air 0 1.0 0.0"
+      }
+    },
+    {
+      "id": "fs_cloud_ice",
+      "label": "fs_云雾模型 冰晶",
+      "notes": "coherence.scm # TODO: layer*+granular — 阻塞于 layer* 引擎未实现",
+      "incoherent": true,
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "h2o-ice.yml"
+        ]
+      ],
+      "required_material_names": [
+        "h2o-ice"
+      ],
+      "sim": {
+        "wl_from_um": 4.5,
+        "wl_to_um": 40.0,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0.0 h2o-ice 250.0 air 0 1.0 0.0"
+      }
+    },
+    {
+      "id": "fs_hdpe_const_50",
+      "label": "fs_HDPE薄膜 50µm 恒定折射率",
+      "notes": "polyethylene.scm hdpe-const",
+      "material_path_keys": [],
+      "required_material_names": [],
+      "sim": {
+        "wl_from_um": 2.5,
+        "wl_to_um": 25.0,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "substrate 0 1.0 0 film 50 1.54 0.002 substrate 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_hdpe_l100",
+      "label": "fs_HDPE-BE薄膜 100µm 相干",
+      "notes": "polyethylene.scm hdpe-L100",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe-be.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe-be"
+      ],
+      "sim": {
+        "wl_from_um": 2.0,
+        "wl_to_um": 20.0,
+        "target_wl_um": 11.0,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "substrate 0 1.0 0 hdpe-be 100 substrate 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_hdpe_l100_inc",
+      "label": "fs_HDPE-BE薄膜 100µm 非相干",
+      "notes": "polyethylene.scm hdpe-L100 # TODO: layer*",
+      "incoherent": true,
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 2.0,
+        "wl_to_um": 20.0,
+        "target_wl_um": 11.0,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 hdpe 100 air 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_hdpe_l33",
+      "label": "fs_HDPE-BE薄膜 33µm 相干",
+      "notes": "polyethylene.scm hdpe-L33",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe-be.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe-be"
+      ],
+      "sim": {
+        "wl_from_um": 2.0,
+        "wl_to_um": 20.0,
+        "target_wl_um": 11.0,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "substrate 0 1.0 0 hdpe-be 33 substrate 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_hdpe_polyeth_35",
+      "label": "fs_HDPE薄膜 35µm 相干",
+      "notes": "polyethylene.scm polyeth-35",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 2.5,
+        "wl_to_um": 25.0,
+        "target_wl_um": 13.75,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "substrate 0 1.0 0 hdpe 35 substrate 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_hdpe_polyeth_35_inc",
+      "label": "fs_HDPE薄膜 35µm 非相干",
+      "notes": "polyethylene.scm polyeth-35 # TODO: layer*",
+      "incoherent": true,
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 2.5,
+        "wl_to_um": 25.0,
+        "target_wl_um": 13.75,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "substrate 0 1.0 0 hdpe 35 substrate 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_hdpe_12_7",
+      "label": "fs_HDPE薄膜 12.7µm 非相干",
+      "notes": "polyethylene.scm hdpe-12.7 # TODO: layer*",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 2.0,
+        "wl_to_um": 15.0,
+        "target_wl_um": 8.5,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 hdpe 12.7 air 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_hdpe_33",
+      "label": "fs_HDPE薄膜 33µm 相干",
+      "notes": "polyethylene.scm hdpe-33",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 2.0,
+        "wl_to_um": 20.0,
+        "target_wl_um": 11.0,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "substrate 0 1.0 0 hdpe 33 substrate 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_hdpe_33ni",
+      "label": "fs_HDPE薄膜 33µm 非相干",
+      "notes": "polyethylene.scm hdpe-33ni # TODO: layer*",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 2.0,
+        "wl_to_um": 20.0,
+        "target_wl_um": 11.0,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "substrate 0 1.0 0 hdpe 33 substrate 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_hdpe_130",
+      "label": "fs_HDPE薄膜 130µm 非相干",
+      "notes": "polyethylene.scm hdpe-130 # TODO: layer*",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 2.5,
+        "wl_to_um": 14.9,
+        "target_wl_um": 8.7,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 hdpe 130 air 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_hdpe_card_14",
+      "label": "fs_HDPE卡片薄膜 14µm 非相干",
+      "notes": "polyethylene.scm hdpe-card # TODO: layer*",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 2.5,
+        "wl_to_um": 25.0,
+        "target_wl_um": 13.75,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 hdpe 14 air 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_hdpe_card_abs_18",
+      "label": "fs_HDPE卡片薄膜 18µm 吸收非相干",
+      "notes": "polyethylene.scm hdpe-card-absorb # TODO: layer*",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 1.82,
+        "wl_to_um": 18.2,
+        "target_wl_um": 10.0,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 hdpe 18 air 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_hdpe_pe_25_4",
+      "label": "fs_HDPE薄膜 25.4µm 相干",
+      "notes": "polyethylene.scm hdpe-pe",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 1.57,
+        "wl_to_um": 15.15,
+        "target_wl_um": 8.36,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "substrate 0 1.0 0 hdpe 25.4 substrate 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_hdpe_age_100",
+      "label": "fs_HDPE老化薄膜 100µm 相干",
+      "notes": "polyethylene.scm hdpe-age-1",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 2.5,
+        "wl_to_um": 50.0,
+        "target_wl_um": 26.25,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "substrate 0 1.0 0 hdpe 100 substrate 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_hdpe_ftir_32",
+      "label": "fs_HDPE薄膜 32µm FTIR相干",
+      "notes": "polyethylene.scm hdpe-ftir",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 2.5,
+        "wl_to_um": 22.2,
+        "target_wl_um": 12.35,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "substrate 0 1.0 0 hdpe 32 substrate 0 1.0 0"
+      }
+    },
+    {
+      "id": "fs_hdpe_pas_32",
+      "label": "fs_HDPE薄膜 32µm PAS非相干",
+      "notes": "polyethylene.scm hdpe-pas # TODO: layer*",
+      "material_path_keys": [
+        [
+          "fs",
+          "materials",
+          "hdpe.yml"
+        ]
+      ],
+      "required_material_names": [
+        "hdpe"
+      ],
+      "sim": {
+        "wl_from_um": 2.5,
+        "wl_to_um": 22.2,
+        "target_wl_um": 12.35,
+        "polarization": "UNPOLARIZED",
+        "target_ang_deg": 0.0
+      },
+      "stack": {
+        "type": "formula",
+        "formula": "air 0 1.0 0 hdpe 32 air 0 1.0 0"
+      }
+    }
+  ]
+}

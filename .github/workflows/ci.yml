@@ -9,7 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
+    env:
+      SIMULATION_DATABASE_KEY: ${{ secrets.SIMULATION_DATABASE_KEY }}
 
     steps:
       - name: Install SSH Key
@@ -23,53 +25,28 @@ jobs:
         with:
           submodules: false
 
-      - name: Init submodules
-        run: git submodule update --init --recursive --depth 1 simulation_core
-
-      - name: Verify submodule checkout
-        run: |
-          test -f simulation_core/3rdparty/infrastructure/CMakeLists.txt
-          test -d simulation_core/assets/database/oghma_database/materials
-
       - name: Verify Hugging Face SSH access
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         env:
           GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20
         run: |
           set -euxo pipefail
-          git lfs install
-          curl --proto '=https' --tlsv1.2 -sSf \
-            https://raw.githubusercontent.com/huggingface/xet-core/refs/heads/main/git_xet/install.sh | sh
-          git xet install
-          git xet --version
           HF_REPO="git@hf.co:spaces/simulation-toykits/v1"
           SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
-          echo ">>> SSH_AUTH_SOCK=${SSH_AUTH_SOCK:-unset}"
-          echo ">>> Probing git@hf.co ..."
           if ! ssh "${SSH_OPTS[@]}" -T git@hf.co; then
             rc=$?
-            echo ">>> ssh -T exit code: ${rc}"
             test "${rc}" -eq 1
           fi
-          echo ">>> git ls-remote ${HF_REPO} HEAD"
           git ls-remote "${HF_REPO}" HEAD
-          echo ">>> HF Space reachable"
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential \
-            clang-20 \
-            llvm-20-dev \
-            pkg-config \
-            libboost-all-dev \
-            libeigen3-dev \
-            libfftw3-dev \
             python3-venv \
             python3-dev \
-            libopenmpi-dev \
-            git-lfs
+            curl \
+            git
           sudo apt-get clean
           sudo rm -rf /var/lib/apt/lists/*
 
@@ -79,23 +56,33 @@ jobs:
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install --no-cache-dir -r requirements.txt
 
-      - name: Build and collect runtime artifacts
+      - name: Require database encryption key
         run: |
+          set -euo pipefail
+          if [[ -z "${SIMULATION_DATABASE_KEY:-}" ]]; then
+            echo ">>> 错误: 请在 GitHub secrets 中配置 SIMULATION_DATABASE_KEY" >&2
+            exit 1
+          fi
+          echo ">>> database key: SIMULATION_DATABASE_KEY"
+
+      - name: Download latest runtime artifacts
+        run: |
+          set -euo pipefail
           source .venv/bin/activate
-          source scripts/init-toykits-build-env.sh
-          python scripts/build_toykits.py
-          test -d .simulation_core/assets/database/oghma_database/materials
-          test -f .simulation_core/simulation.so
-          test -d .simulation_core/simulation_plugins
-          test -f .simulation_core/simulation_plugins/filmstack_visualizer.py
-          test -f .simulation_core/simulation_plugins/simulation_paths.py
+          python scripts/build_toykits.py --download_toolkits
+          test -f .simulation_toolkits/simulation.so
+          test -d .simulation_toolkits/simulation_plugins
+          test -f .simulation_toolkits/assets/database.bin
+          test ! -d .simulation_toolkits/assets/database
+          echo "$(pwd)/.simulation_toolkits" | sudo tee /etc/ld.so.conf.d/99-simulation-toolkits.conf
+          sudo ldconfig
 
       - name: Verify runtime and run tests
         run: |
           source .venv/bin/activate
           source scripts/init-toykits-build-env.sh
-          test -d "${SIMULATION_DATABASE_DIR}/oghma_database/materials"
-          cd "${{ github.workspace }}"
+          set -euo pipefail
+          test -f "${SIMULATION_ARTIFACTS_DIR}/assets/database.bin"
           python -c "
           import simulation
           import filmstack_visualizer
@@ -103,7 +90,6 @@ jobs:
           "
           python scripts/check_import_contract.py
           python -m pytest test/ -v --tb=short
-          python -m pytest simulation_core/tests/test_gen_sweep_table.py -q --tb=short
 
       - name: Deploy to Hugging Face Space
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
@@ -113,10 +99,5 @@ jobs:
           HF_ENDPOINT: https://huggingface.co
         run: |
           set -euxo pipefail
-          git lfs install
-          curl --proto '=https' --tlsv1.2 -sSf \
-            https://raw.githubusercontent.com/huggingface/xet-core/refs/heads/main/git_xet/install.sh | sh
-          git xet install
           source .venv/bin/activate
-          source scripts/init-toykits-build-env.sh
           python scripts/build_toykits.py hf

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""simulation_toykits build and deploy CLI."""
+"""simulation_toykits build and deploy CLI (orthogonal invocations)."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import re
 import shutil
@@ -11,12 +13,17 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
-RUNTIME_DIR = ".simulation_core"
+RUNTIME_DIR = ".simulation_toolkits"
 DEFAULT_BUILD_REL = Path("simulation_core/build")
+ARTIFACTS_REPO = "likooooo/simulation_toolkits_artifacts"
+ARTIFACT_TAR_NAME = "simulation_toolkits-linux-x86_64.tar.gz"
+MANIFEST_NAME = "manifest.json"
 
 DEFAULT_HF_REPO = "git@hf.co:spaces/simulation-toykits/v1"
 HF_DEPLOY_DEST = "/tmp/simulation-toykits-hf-deploy"
@@ -39,14 +46,33 @@ license: mit
 {HF_README_CONFIG_NOTE}
 """
 FRONT_MATTER_RE = re.compile(r"^---\s*\n.*?\n---\s*\n", re.DOTALL)
-HF_LFS_PATTERNS = (
-    ".simulation_core/*.so",
-    ".simulation_core/*.so.*",
-    ".simulation_core/test_diffraction",
+PRECOMPILED_FILENAME = "database.bin"
+FS_COMPARE_HTML_NAME = "fs_baseline_vs_toykits.html"
+
+PY_CORE_PLUGINS_KEEP = frozenset(
+    {
+        "visualizer.py",
+        "viz_io.py",
+        "plot_save_dir.py",
+        "pipe_utils.py",
+        "panel_renderer.py",
+        "plot_source.py",
+    }
+)
+SIMULATION_PLUGINS_KEEP = frozenset(
+    {
+        "simulation_database_parser.py",
+        "filmstack_visualizer.py",
+        "filmstack_optimization_utils.py",
+        "simulation_paths.py",
+        "tmm_utils.py",
+    }
 )
 
 DEFAULT_STREAMLIT_PORT = 8052
-DEFAULT_STREAMLIT_ADDRESS = "0.0.0.0"
+DEFAULT_STREAMLIT_ADDRESS = "::"
+
+GITHUB_API = "https://api.github.com"
 
 
 def repo_root() -> Path:
@@ -65,6 +91,18 @@ def default_build_dir() -> Path:
     return (repo_root() / DEFAULT_BUILD_REL).resolve()
 
 
+def subprocess_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    return {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", **(extra or {})}
+
+
+def gh_authenticated() -> bool:
+    """gh 可用且已配置 token（GitHub Actions 中未设 GH_TOKEN 时 gh 会拒绝执行）。"""
+    return bool(
+        shutil.which("gh")
+        and (os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN"))
+    )
+
+
 def run(
     cmd: list,
     cwd: Optional[Path] = None,
@@ -76,7 +114,7 @@ def run(
 ) -> subprocess.CompletedProcess:
     kwargs: dict = {
         "cwd": cwd or repo_root(),
-        "env": {**os.environ, **(env or {})},
+        "env": subprocess_env(env),
         "check": check,
         "text": True,
     }
@@ -85,7 +123,10 @@ def run(
     try:
         return subprocess.run(cmd, **kwargs)
     except subprocess.CalledProcessError as exc:
-        print(f">>> Command failed (exit {exc.returncode}): {' '.join(str(c) for c in cmd)}", file=sys.stderr)
+        print(
+            f">>> Command failed (exit {exc.returncode}): {' '.join(str(c) for c in cmd)}",
+            file=sys.stderr,
+        )
         if capture:
             if exc.stdout:
                 print(exc.stdout.rstrip(), file=sys.stderr)
@@ -100,13 +141,78 @@ def log(msg: str, *, err: bool = False) -> None:
     print(msg, file=sys.stderr if err else sys.stdout, flush=True)
 
 
-def ensure_simulation_core() -> int:
+def artifact_hint() -> str:
+    return (
+        f"请先执行 `python scripts/build_toykits.py` 编译，"
+        f"或 `python scripts/build_toykits.py --download_toolkits` 下载 latest Release。"
+    )
+
+
+def require_artifact() -> Path:
+    rt = runtime_dir()
+    so = rt / "simulation.so"
+    if not so.is_file():
+        raise RuntimeError(f"缺少 {so}；{artifact_hint()}")
+    return rt
+
+
+def env_database_key() -> str | None:
+    key = os.environ.get("SIMULATION_DATABASE_KEY", "").strip()
+    return key or None
+
+
+def require_env_database_key() -> str:
+    key = env_database_key()
+    if not key:
+        raise RuntimeError(
+            "SIMULATION_DATABASE_KEY is not set；docker 模式须事先 export 该环境变量。"
+        )
+    return key
+
+
+def capture_shell_env(bash_snippet: str, *, cwd: Path | None = None) -> dict[str, str]:
+    script = f"set -euo pipefail\n{bash_snippet}\nenv -0"
+    result = subprocess.run(
+        ["bash", "-c", script],
+        cwd=cwd or repo_root(),
+        env=subprocess_env(),
+        capture_output=True,
+        check=True,
+    )
+    env: dict[str, str] = {}
+    for entry in result.stdout.split(b"\0"):
+        if not entry or b"=" not in entry:
+            continue
+        key, value = entry.split(b"=", 1)
+        env[key.decode()] = value.decode()
+    return env
+
+
+def capture_simulation_build_env() -> dict[str, str]:
+    init = simulation_core_root() / "scripts" / "init-simulation-build-env.sh"
+    if not init.is_file():
+        raise FileNotFoundError(f"未找到 {init}；请先 init simulation_core 子模块。")
+    rt = runtime_dir()
+    snippet = f'source "{init}" "{rt}" "{repo_root()}"'
+    env = capture_shell_env(snippet)
+    for key in ("SIMULATION_DATABASE_KEY", "HOME", "USER"):
+        val = os.environ.get(key, "").strip()
+        if val:
+            env[key] = val
+    return env
+
+
+def ensure_simulation_core() -> None:
     simulation_root = simulation_core_root()
     if not simulation_root.is_dir():
-        print(f"错误: 未找到 simulation_core 子模块目录: {simulation_root}", file=sys.stderr)
-        print("请先执行: git submodule update --init --recursive simulation_core", file=sys.stderr)
-        return 1
-    return 0
+        raise FileNotFoundError(
+            f"未找到 simulation_core 子模块: {simulation_root}\n"
+            "请先执行: git submodule update --init --recursive simulation_core"
+        )
+
+
+def freesnell_compare_output_dir() -> Path:
+    return runtime_dir() / "assets" / "fs_compare"
 
 
 def copy_test_diffraction(path_to_build: Path, target: Path) -> None:
@@ -120,49 +226,495 @@ def copy_test_diffraction(path_to_build: Path, target: Path) -> None:
     print(f">>> 已复制 test_diffraction -> {dst}")
 
 
-def run_build_pipeline(path_to_build: Path | None = None) -> int:
-    if ensure_simulation_core() != 0:
-        return 1
+def prune_toykits_plugins(target: Path | None = None) -> None:
+    rt = (target or runtime_dir()).resolve()
+    removed = 0
+    for subdir, keep in (
+        ("py_core_plugins", PY_CORE_PLUGINS_KEEP),
+        ("simulation_plugins", SIMULATION_PLUGINS_KEEP),
+    ):
+        plugin_dir = rt / subdir
+        if not plugin_dir.is_dir():
+            continue
+        for item in plugin_dir.iterdir():
+            if item.name in keep:
+                continue
+            if item.is_dir():
+                shutil.rmtree(item)
+            else:
+                item.unlink()
+            removed += 1
+    print(f">>> prune_toykits_plugins: 已删除 {removed} 个非 allowlist 项 ({rt})")
 
-    build_dir = (path_to_build or default_build_dir()).resolve()
+
+def build_toolkits_step(build_dir: Path | None = None) -> None:
+    ensure_simulation_core()
+    build_dir = (build_dir or default_build_dir()).resolve()
     target = runtime_dir()
     build_sim = simulation_core_root() / "scripts" / "build_simulation.py"
     if not build_sim.is_file():
-        print(f"错误: 未找到 {build_sim}", file=sys.stderr)
-        return 1
+        raise FileNotFoundError(f"未找到 {build_sim}")
 
-    print(f">>> build pipeline: build_dir={build_dir} -> {RUNTIME_DIR}/")
-    sim_cmd = [
-        sys.executable,
-        str(build_sim),
-        "-B",
-        str(build_dir),
-        "--build-type",
-        "Release",
-        "--collect",
-        str(target),
-    ]
-    try:
-        run(sim_cmd, cwd=simulation_core_root())
-    except subprocess.CalledProcessError:
-        init_sh = repo_root() / "scripts" / "init-toykits-build-env.sh"
-        if init_sh.is_file():
-            print(f">>> Hint: if build failed, try: source {init_sh}", file=sys.stderr)
-        return 1
-
+    env = capture_simulation_build_env()
+    print(f">>> --toolkits: build_dir={build_dir} -> {RUNTIME_DIR}/")
+    run(
+        [
+            sys.executable,
+            str(build_sim),
+            "-B",
+            str(build_dir),
+            "--build-type",
+            "Release",
+            "--collect",
+            str(target),
+        ],
+        cwd=simulation_core_root(),
+        env=env,
+        hint="pip install -r requirements-build.txt；确认 simulation_core 子模块已 init",
+    )
     copy_test_diffraction(build_dir, target)
-    print(f">>> 运行时已收集: {target}")
+    prune_toykits_plugins(target)
+    print(f">>> toolkits 已收集: {target}")
+
+
+def build_bench_step() -> None:
+    output = freesnell_compare_output_dir()
+    script = repo_root() / "scripts" / "build_freesnell_compare_ui.py"
+    if not script.is_file():
+        raise FileNotFoundError(f"未找到 {script}")
+
+    scripts_dir = repo_root() / "scripts"
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    from build_freesnell_compare_ui import resolve_freesnell_env
+
+    env = {**local_runtime_env(), **resolve_freesnell_env()}
+    print(f">>> --bench: FreeSnell 比对 UI -> {output}")
+    run(
+        [sys.executable, "-B", str(script), "--output", str(output)],
+        cwd=repo_root(),
+        env=env,
+        hint="请 export FREESNELL_DIR/SCM/SLIB 或将工具链放到 build_freesnell_compare_ui.py 中的默认路径",
+    )
+    html_path = output / FS_COMPARE_HTML_NAME
+    if not html_path.is_file():
+        raise RuntimeError(f"未生成 {html_path}")
+    print(f">>> bench 完成: {html_path}")
+
+
+def compile_database_precompiled(db_dir: Path, *, env: dict[str, str] | None = None) -> Path:
+    db_dir = db_dir.resolve()
+    rt = runtime_dir().resolve()
+    if not (rt / "simulation.so").is_file():
+        raise FileNotFoundError(f"缺少 {rt / 'simulation.so'}；请先 --toolkits")
+
+    bundle_path = rt / "assets" / PRECOMPILED_FILENAME
+    run_env = {**(env or local_runtime_env())}
+    run_env["SIMULATION_DATABASE_DIR"] = str(db_dir)
+    run_env["SIMULATION_ARTIFACTS_DIR"] = str(rt)
+    script = (
+        "import simulation\n"
+        "from simulation_database_parser import get_simulation_database\n"
+        "from simulation_database.database_precompiling import compile_database_index\n"
+        "db = get_simulation_database(init=True)\n"
+        "print(compile_database_index(db, out_path=r'''" + str(bundle_path) + "'''))\n"
+    )
+    result = run(
+        [sys.executable, "-B", "-c", script],
+        cwd=repo_root(),
+        env=run_env,
+        capture=True,
+    )
+    line = result.stdout.strip().splitlines()[-1]
+    out_path = Path(line)
+    if not out_path.is_file():
+        raise RuntimeError(f"compile_database_precompiled did not produce bundle: {line!r}")
+    size_kb = out_path.stat().st_size / 1024
+    print(f">>> 已预编译数据库 bundle: {out_path} ({size_kb:.1f} KiB)")
+    if db_dir.is_dir():
+        shutil.rmtree(db_dir)
+        print(f">>> 已删除明文材料库: {db_dir}")
+    return out_path
+
+
+def remove_runtime_plaintext_database() -> None:
+    """Remove plaintext YAML tree under assets/database/ when database.bin is present."""
+    rt = runtime_dir().resolve()
+    db_dir = rt / "assets" / "database"
+    bundle = rt / "assets" / PRECOMPILED_FILENAME
+    if not bundle.is_file() or not db_dir.is_dir():
+        return
+    shutil.rmtree(db_dir)
+    print(f">>> 已删除明文材料库: {db_dir}")
+
+
+def build_database_step() -> None:
+    rt = runtime_dir()
+    db_dir = rt / "assets" / "database"
+    if db_dir.is_dir():
+        compile_database_precompiled(db_dir)
+    else:
+        prepare_database_bundle(resolve_database_source())
+    remove_runtime_plaintext_database()
+
+
+def resolve_database_source(explicit: str = "") -> Path:
+    candidates: list[Path] = []
+    if explicit:
+        candidates.append(Path(explicit).expanduser())
+    collected = runtime_dir() / "assets" / "database"
+    if collected.is_dir():
+        candidates.append(collected)
+    core_db = simulation_core_root() / "assets" / "database"
+    if core_db.is_dir():
+        candidates.append(core_db)
+    env_root = os.environ.get("SIMULATION_DATABASE_DIR", "").strip()
+    if env_root:
+        candidates.append(Path(env_root).expanduser())
+    seen: set[Path] = set()
+    for raw in candidates:
+        path = raw.resolve()
+        if path in seen:
+            continue
+        seen.add(path)
+        if (path / "og" / "materials").is_dir() and any(
+            (path / "og" / "materials").iterdir()
+        ):
+            return path
+    raise FileNotFoundError(
+        "未找到可用的材料库源目录（需含非空 og/materials/）。"
+        "请先 --toolkits（collect 含 database YAML）或设置 SIMULATION_DATABASE_DIR。"
+    )
+
+
+def prepare_database_bundle(source: Path) -> Path:
+    release_script = source / "database_release.py"
+    if not release_script.is_file():
+        raise FileNotFoundError(
+            f"材料库源 {source} 缺少 database_release.py；"
+            "请指定 simulation_core/assets/database。"
+        )
+    with tempfile.TemporaryDirectory(prefix="sim-db-release-") as tmp:
+        dest = Path(tmp)
+        run(
+            [
+                sys.executable,
+                "-B",
+                str(release_script),
+                "--dest",
+                str(dest),
+                "--clean",
+            ],
+            cwd=source,
+        )
+        materials = dest / "og" / "materials"
+        if not materials.is_dir() or not any(materials.iterdir()):
+            raise FileNotFoundError(f"database_release 未产出 og/materials: {dest}")
+        size_mb = sum(f.stat().st_size for f in dest.rglob("*") if f.is_file()) / (1024 * 1024)
+        print(f">>> 已 release 材料库: {source} -> {dest} ({size_mb:.1f} MiB)")
+        return compile_database_precompiled(dest)
+
+
+def resolve_build_steps(args: argparse.Namespace) -> tuple[bool, bool, bool]:
+    any_flag = args.toolkits or args.bench or args.database
+    if not any_flag:
+        return True, True, True
+    return args.toolkits, args.bench, args.database
+
+
+def cmd_build(args: argparse.Namespace) -> int:
+    do_toolkits, do_bench, do_database = resolve_build_steps(args)
+    labels: list[str] = []
+    if do_toolkits:
+        labels.append("toolkits")
+    if do_database:
+        labels.append("database")
+    if do_bench:
+        labels.append("bench")
+    if labels:
+        log(f">>> build 步骤: {' → '.join(labels)}")
+
+    try:
+        if do_toolkits:
+            build_toolkits_step()
+        elif do_bench or do_database:
+            require_artifact()
+        if do_database:
+            build_database_step()
+        if do_bench:
+            build_bench_step()
+    except (FileNotFoundError, RuntimeError) as exc:
+        print(f"错误: {exc}", file=sys.stderr)
+        return 1
+    except subprocess.CalledProcessError:
+        print("错误: build 子步骤命令失败（见上方日志）", file=sys.stderr)
+        return 1
+
+    if labels:
+        log(">>> build 完成")
+    return 0
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def github_get_json(url: str) -> dict:
+    req = Request(url, headers={"Accept": "application/vnd.github+json"})
+    with urlopen(req, timeout=60) as resp:
+        return json.loads(resp.read().decode())
+
+
+def latest_release_asset_url(asset_name: str) -> str:
+    if gh_authenticated():
+        result = run(
+            [
+                "gh",
+                "api",
+                f"repos/{ARTIFACTS_REPO}/releases/latest",
+                "--jq",
+                f'.assets[] | select(.name=="{asset_name}") | .browser_download_url',
+            ],
+            capture=True,
+        )
+        url = result.stdout.strip()
+        if url:
+            return url
+    data = github_get_json(f"{GITHUB_API}/repos/{ARTIFACTS_REPO}/releases/latest")
+    for asset in data.get("assets", []):
+        if asset.get("name") == asset_name:
+            return asset["browser_download_url"]
+    raise RuntimeError(f"latest Release 中未找到 asset: {asset_name}")
+
+
+def download_manifest() -> dict | None:
+    try:
+        url = latest_release_asset_url(MANIFEST_NAME)
+    except (HTTPError, URLError, RuntimeError):
+        return None
+    with urlopen(url, timeout=120) as resp:
+        return json.loads(resp.read().decode())
+
+
+def cmd_download_toolkits(_args: argparse.Namespace) -> int:
+    root = repo_root()
+    rt = runtime_dir()
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="sim-toolkits-dl-") as tmp:
+            tmp_path = Path(tmp)
+            tar_path = tmp_path / ARTIFACT_TAR_NAME
+            log(f">>> 下载 latest Release: {ARTIFACTS_REPO}/{ARTIFACT_TAR_NAME}")
+            if gh_authenticated():
+                run(
+                    [
+                        "gh",
+                        "release",
+                        "download",
+                        "--repo",
+                        ARTIFACTS_REPO,
+                        "--pattern",
+                        ARTIFACT_TAR_NAME,
+                        "-D",
+                        str(tmp_path),
+                    ],
+                    hint=f"确认可访问 https://github.com/{ARTIFACTS_REPO}/releases/latest",
+                )
+            else:
+                url = latest_release_asset_url(ARTIFACT_TAR_NAME)
+                run(["curl", "-fsSL", "-o", str(tar_path), url])
+
+            if not tar_path.is_file():
+                print(f"错误: 未下载到 {tar_path}", file=sys.stderr)
+                return 1
+
+            manifest = download_manifest()
+            if manifest and manifest.get("sha256"):
+                actual = sha256_file(tar_path)
+                expected = manifest["sha256"]
+                if actual != expected:
+                    print(
+                        f"错误: sha256 不匹配 (expected {expected}, got {actual})",
+                        file=sys.stderr,
+                    )
+                    return 1
+                log(f">>> sha256 校验通过: {actual[:16]}…")
+
+            extract_dir = tmp_path / "extract"
+            extract_dir.mkdir()
+            run(["tar", "-xzf", str(tar_path), "-C", str(extract_dir)])
+            new_rt = extract_dir / RUNTIME_DIR
+            if not (new_rt / "simulation.so").is_file():
+                print(f"错误: 归档内缺少 {RUNTIME_DIR}/simulation.so", file=sys.stderr)
+                return 1
+
+            if rt.exists():
+                shutil.rmtree(rt)
+            shutil.move(str(new_rt), str(rt))
+    except (subprocess.CalledProcessError, HTTPError, URLError, RuntimeError) as exc:
+        print(f"错误: 下载失败: {exc}", file=sys.stderr)
+        return 1
+
+    log(f">>> artifact 就绪: {rt}")
+    return 0
+
+
+@dataclass(frozen=True)
+class RepoVersion:
+    name: str
+    path: Path
+    commit: str
+    date: str
+    author: str
+    email: str
+    subject: str
+
+
+def git_head_info(name: str, path: Path) -> RepoVersion | None:
+    if not (path / ".git").exists():
+        return None
+    result = run(
+        ["git", "-C", str(path), "log", "-1", "--format=%H|%ci|%an|%ae|%s"],
+        capture=True,
+    )
+    commit, date, author, email, subject = result.stdout.strip().split("|", 4)
+    return RepoVersion(
+        name=name,
+        path=path,
+        commit=commit,
+        date=date,
+        author=author,
+        email=email,
+        subject=subject,
+    )
+
+
+def collect_repo_versions(root: Path) -> list[RepoVersion]:
+    repos = [
+        ("simulation_toykits", root),
+        ("simulation_core", root / "simulation_core"),
+        ("infrastructure", root / "simulation_core" / "3rdparty" / "infrastructure"),
+    ]
+    versions: list[RepoVersion] = []
+    for name, path in repos:
+        info = git_head_info(name, path)
+        if info:
+            versions.append(info)
+    return versions
+
+
+def auto_release_tag() -> str:
+    root = repo_root()
+    short_sha = "unknown"
+    try:
+        short_sha = run(
+            ["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+            capture=True,
+        ).stdout.strip()
+    except subprocess.CalledProcessError:
+        pass
+    today = datetime.now(timezone.utc).strftime("%Y.%m.%d")
+    return f"v{today}+{short_sha}"
+
+
+def create_artifact_archive(dest: Path) -> Path:
+    rt = runtime_dir()
+    require_artifact()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    run(
+        ["tar", "-czf", str(dest), "-C", str(repo_root()), RUNTIME_DIR],
+        check=True,
+    )
+    return dest
+
+
+def cmd_release(_args: argparse.Namespace) -> int:
+    require_artifact()
+    bundle = runtime_dir() / "assets" / PRECOMPILED_FILENAME
+    if not bundle.is_file():
+        print(f"错误: 缺少 {bundle}；请先 build --database", file=sys.stderr)
+        return 1
+
+    if not shutil.which("gh"):
+        print("错误: release 需要 gh CLI", file=sys.stderr)
+        return 1
+
+    tag = auto_release_tag()
+    build_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    versions = collect_repo_versions(repo_root())
+
+    with tempfile.TemporaryDirectory(prefix="sim-release-") as tmp:
+        tmp_path = Path(tmp)
+        tar_path = tmp_path / ARTIFACT_TAR_NAME
+        create_artifact_archive(tar_path)
+        digest = sha256_file(tar_path)
+        manifest = {
+            "tag": tag,
+            "build_time": build_time,
+            "artifact": ARTIFACT_TAR_NAME,
+            "sha256": digest,
+            "repos": {
+                v.name: {
+                    "commit": v.commit,
+                    "date": v.date,
+                    "author": v.author,
+                    "subject": v.subject,
+                }
+                for v in versions
+            },
+        }
+        manifest_path = tmp_path / MANIFEST_NAME
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+        notes = f"Build {build_time}\n\nsha256: `{digest}`"
+        log(f">>> gh release create {tag} -> {ARTIFACTS_REPO}")
+        run(
+            [
+                "gh",
+                "release",
+                "create",
+                tag,
+                "--repo",
+                ARTIFACTS_REPO,
+                "--title",
+                tag,
+                "--notes",
+                notes,
+                "--latest",
+                str(tar_path),
+                str(manifest_path),
+            ],
+            hint=f"确认对 {ARTIFACTS_REPO} 有 release 权限",
+        )
+    log(f">>> Release 已发布: {tag} (latest)")
     return 0
 
 
 def local_runtime_env() -> dict[str, str]:
     rt = runtime_dir().resolve()
-    return {
+    env = {
         "LD_LIBRARY_PATH": f"{rt}:{os.environ.get('LD_LIBRARY_PATH', '')}".rstrip(":"),
-        "SIMULATION_DATABASE_DIR": str(rt / "assets" / "database"),
+        "SIMULATION_DATABASE_DIR": str(rt / "assets"),
         "SIMULATION_ARTIFACTS_DIR": str(rt),
         "PYTHONPATH": f"{repo_root().resolve()}:{rt}:{os.environ.get('PYTHONPATH', '')}".rstrip(":"),
     }
+    for key in (
+        "SIMULATION_DATABASE_KEY",
+        "FREESNELL_DIR",
+        "SCM",
+        "SLIB",
+        "SCHEME_LIBRARY_PATH",
+        "NK_RWB",
+        "NK_DATABASE_PATH",
+    ):
+        val = os.environ.get(key, "").strip()
+        if val:
+            env[key] = val
+    return env
 
 
 def _process_cmdline(pid: int) -> str:
@@ -182,6 +734,7 @@ def _listening_pids_on_port(port: int) -> list[int]:
     if shutil.which("lsof"):
         result = subprocess.run(
             ["lsof", "-ti", f":{port}", "-sTCP:LISTEN"],
+            env=subprocess_env(),
             capture_output=True,
             text=True,
             check=False,
@@ -195,6 +748,7 @@ def _listening_pids_on_port(port: int) -> list[int]:
     if not pids and shutil.which("ss"):
         result = subprocess.run(
             ["ss", "-H", "-tlnp", f"sport = :{port}"],
+            env=subprocess_env(),
             capture_output=True,
             text=True,
             check=False,
@@ -213,7 +767,7 @@ def stop_streamlit_on_port(port: int) -> None:
                 file=sys.stderr,
             )
             continue
-        subprocess.run(["kill", str(pid)], check=False)
+        subprocess.run(["kill", str(pid)], env=subprocess_env(), check=False)
         print(f">>> 已停止占用端口 {port} 的 Streamlit 进程 PID {pid}")
 
 
@@ -222,30 +776,29 @@ def start_local_server() -> int:
     address = DEFAULT_STREAMLIT_ADDRESS
     root = repo_root()
     app = root / "app.py"
-    rt = runtime_dir()
-    if not (rt / "simulation.so").is_file():
-        print(f"错误: 未找到 {rt / 'simulation.so'}，请先运行 build_toykits 或 build_toykits local", file=sys.stderr)
+    try:
+        require_artifact()
+    except RuntimeError as exc:
+        print(f"错误: {exc}", file=sys.stderr)
         return 1
     if not app.is_file():
         print(f"错误: 未找到 {app}", file=sys.stderr)
         return 1
     if not shutil.which("streamlit"):
-        print("错误: 未找到 streamlit 命令，请先 pip install -r requirements.txt", file=sys.stderr)
+        print("错误: 未找到 streamlit；pip install -r requirements.txt", file=sys.stderr)
         return 1
 
     for pid in _listening_pids_on_port(port):
         if not _is_streamlit_pid(pid):
             cmd = _process_cmdline(pid)
             print(
-                f"错误: 端口 {port} 已被非 Streamlit 进程占用 (PID {pid}): {cmd}\n"
-                f"请先停止该进程，或改用其它端口。",
+                f"错误: 端口 {port} 已被非 Streamlit 进程占用 (PID {pid}): {cmd}",
                 file=sys.stderr,
             )
             return 1
 
     stop_streamlit_on_port(port)
-
-    env = {**os.environ, **local_runtime_env()}
+    env = subprocess_env(local_runtime_env())
     cmd = [
         "streamlit",
         "run",
@@ -254,87 +807,81 @@ def start_local_server() -> int:
         f"--server.address={address}",
     ]
     print(f">>> 启动 Streamlit: http://localhost:{port}/")
-    print(f">>> LD_LIBRARY_PATH={env['LD_LIBRARY_PATH']}")
-    print(f">>> SIMULATION_DATABASE_DIR={env['SIMULATION_DATABASE_DIR']}")
     return subprocess.run(cmd, cwd=root, env=env).returncode
-
-
-def resolve_database_source(explicit: str = "") -> Path:
-    candidates: list[Path] = []
-    if explicit:
-        candidates.append(Path(explicit).expanduser())
-    collected = runtime_dir() / "assets" / "database"
-    if collected.is_dir():
-        candidates.append(collected)
-    env_root = os.environ.get("SIMULATION_DATABASE_DIR", "").strip()
-    if env_root:
-        candidates.append(Path(env_root).expanduser())
-    seen: set[Path] = set()
-    for raw in candidates:
-        path = raw.resolve()
-        if path in seen:
-            continue
-        seen.add(path)
-        if (path / "oghma_database" / "materials").is_dir() and any(
-            (path / "oghma_database" / "materials").iterdir()
-        ):
-            return path
-    raise FileNotFoundError(
-        "未找到可用的材料库源目录（需含非空 oghma_database/materials/）。"
-        "请先 build_toykits 或设置 SIMULATION_DATABASE_DIR。"
-    )
-
-
-def prepare_database_bundle(dest: Path, source: Path) -> None:
-    dest.mkdir(parents=True, exist_ok=True)
-    release_script = source / "database_release.py"
-    if not release_script.is_file():
-        raise FileNotFoundError(
-            f"材料库源 {source} 缺少 database_release.py；"
-            "请指定 simulation_core/assets/database 或先完成 export。"
-        )
-    run(
-        [
-            sys.executable,
-            str(release_script),
-            "--dest",
-            str(dest),
-            "--clean",
-        ],
-        cwd=source,
-    )
-    materials = dest / "oghma_database" / "materials"
-    if not materials.is_dir() or not any(materials.iterdir()):
-        raise FileNotFoundError(f"database_release 未产出 oghma_database/materials: {dest}")
-    size_mb = sum(f.stat().st_size for f in dest.rglob("*") if f.is_file()) / (1024 * 1024)
-    print(f">>> 已 release 材料库: {source} -> {dest} ({size_mb:.1f} MiB)")
 
 
 def verify_docker_image(image_tag: str) -> None:
     script = (
         "import os; os.chdir('/app'); "
-        "os.environ.setdefault('SIMULATION_ARTIFACTS_DIR', '/app/.simulation_core'); "
-        "os.environ.setdefault('PYTHONPATH', '/app:/app/.simulation_core'); "
+        "os.environ.setdefault('SIMULATION_ARTIFACTS_DIR', '/app/.simulation_toolkits'); "
+        "os.environ.setdefault('SIMULATION_DATABASE_DIR', '/app/.simulation_toolkits/assets'); "
+        "os.environ.setdefault('PYTHONPATH', '/app:/app/.simulation_toolkits'); "
+        "from pathlib import Path; "
+        "from simulation_database.database_precompiling import precompiled_bundle_path, load_or_build_database_index; "
         "import simulation; "
         "from simulation_database_parser import get_simulation_database; "
+        "assert precompiled_bundle_path().is_file(), 'missing precompiled bundle'; "
         "db = get_simulation_database(init=True); "
-        "q = db.query(); "
-        "assert q.keys, 'empty database tree'; "
-        "assert db.local_path(), 'database path empty'; "
-        "print('verify ok:', db.root_path(), list(q.keys)[:5])"
+        "index = load_or_build_database_index(db); "
+        "assert index.leaf_count > 0, 'empty precompiled index'; "
+        "print('verify ok:', precompiled_bundle_path(), index.leaf_count)"
     )
-    run(["docker", "run", "--rm", image_tag, "python", "-c", script])
+    key = require_env_database_key()
+    run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "-e",
+            f"SIMULATION_DATABASE_KEY={key}",
+            "-e",
+            "PYTHONDONTWRITEBYTECODE=1",
+            image_tag,
+            "python",
+            "-B",
+            "-c",
+            script,
+        ]
+    )
 
 
-@dataclass(frozen=True)
-class RepoVersion:
-    name: str
-    path: Path
-    commit: str
-    date: str
-    author: str
-    email: str
-    subject: str
+def cmd_local(_args: argparse.Namespace) -> int:
+    return start_local_server()
+
+
+def cmd_docker(_args: argparse.Namespace) -> int:
+    root = repo_root()
+    try:
+        require_env_database_key()
+        require_artifact()
+    except RuntimeError as exc:
+        print(f"错误: {exc}", file=sys.stderr)
+        return 1
+
+    if not shutil.which("docker"):
+        print("错误: 未找到 docker 命令", file=sys.stderr)
+        return 1
+
+    image_tag = DEFAULT_DOCKER_IMAGE_TAG
+    print(f">>> docker build: {image_tag}")
+    try:
+        run(
+            [
+                "docker",
+                "build",
+                "-f",
+                str(root / "Dockerfile"),
+                "-t",
+                image_tag,
+                str(root),
+            ]
+        )
+        print(f">>> 验证镜像: {image_tag}")
+        verify_docker_image(image_tag)
+    except subprocess.CalledProcessError:
+        return 1
+    print("======== 全部完成 ========")
+    return 0
 
 
 def ensure_hf_endpoint() -> None:
@@ -357,43 +904,15 @@ def resolve_hf_readme_prefix(cloned_readme: Path | None) -> str:
     return HF_README_PREFIX.rstrip() + "\n"
 
 
-def git_head_info(name: str, path: Path) -> RepoVersion:
-    if not (path / ".git").exists():
-        raise FileNotFoundError(f"Not a git repo: {path} ({name})")
-    result = run(
-        ["git", "-C", str(path), "log", "-1", "--format=%H|%ci|%an|%ae|%s"],
-        capture=True,
-    )
-    commit, date, author, email, subject = result.stdout.strip().split("|", 4)
-    return RepoVersion(
-        name=name,
-        path=path,
-        commit=commit,
-        date=date,
-        author=author,
-        email=email,
-        subject=subject,
-    )
-
-
-def collect_repo_versions(root: Path) -> list[RepoVersion]:
-    repos = [
-        ("simulation_toykits", root),
-        ("simulation", root / "simulation_core"),
-        ("infrastructure", root / "simulation_core" / "3rdparty" / "infrastructure"),
-    ]
-    return [git_head_info(name, path) for name, path in repos]
-
-
 def render_deploy_readme(root: Path, build_time: str, versions: list[RepoVersion]) -> str:
     lines = [
         "# simulation-toykits Hugging Face Space",
         "",
         f"**BUILD_TIME:** {build_time}",
         "",
-        "Application source (`app.py`, `core/`, `pages/`, etc.) is cloned from GitHub "
-        "when this Space builds its Docker image. This repository only stores the "
-        "pre-built `.simulation_core/` runtime artifacts from CI.",
+        "Docker 构建时从 GitHub 克隆应用源码，并从 "
+        f"[{ARTIFACTS_REPO}](https://github.com/{ARTIFACTS_REPO}) "
+        "latest Release 下载 `.simulation_toolkits/` runtime artifact。",
         "",
         "## Source commits (at deploy time)",
         "",
@@ -439,25 +958,6 @@ def write_dockerfile(hf_dockerfile: Path, dest: Path, build_time: str) -> None:
     (dest / "Dockerfile").write_text(new_content, encoding="utf-8")
 
 
-def setup_lfs_for_artifacts(dest: Path) -> None:
-    run(["git", "lfs", "install", "--local"], cwd=dest)
-    for pattern in HF_LFS_PATTERNS:
-        run(["git", "lfs", "track", pattern], cwd=dest)
-    log(">>> .gitattributes for HF LFS:")
-    log((dest / ".gitattributes").read_text(encoding="utf-8"))
-
-
-def ensure_git_xet() -> None:
-    if subprocess.run(["git", "xet", "--version"], capture_output=True).returncode != 0:
-        log(
-            ">>> git-xet not found; install from "
-            "https://huggingface.co/docs/hub/xet/using-xet-storage#git",
-            err=True,
-        )
-        raise RuntimeError("git-xet is required for Hugging Face binary uploads")
-    run(["git", "xet", "install"])
-
-
 def ensure_git_identity(dest: Path, root: Path) -> None:
     name = os.environ.get("GIT_AUTHOR_NAME")
     email = os.environ.get("GIT_AUTHOR_EMAIL")
@@ -482,12 +982,60 @@ def git_commit_with_message(dest: Path, message: str, root: Path) -> None:
         Path(msg_path).unlink(missing_ok=True)
 
 
+def git_root_commit(dest: Path) -> str:
+    result = run(
+        ["git", "rev-list", "--max-parents=0", "HEAD"],
+        cwd=dest,
+        capture=True,
+    )
+    lines = [ln.strip() for ln in result.stdout.splitlines() if ln.strip()]
+    if not lines:
+        raise RuntimeError(f"No root commit found in {dest}")
+    return lines[0]
+
+
+def reset_hf_repo_to_root(dest: Path) -> str:
+    root = git_root_commit(dest)
+    run(["git", "reset", "--hard", root], cwd=dest)
+    log(f">>> Reset HF repo to root commit {root[:12]}")
+    return root
+
+
+def clone_hf_repo(hf_repo: str, dest: Path) -> None:
+    env = {**os.environ, "GIT_LFS_SKIP_SMUDGE": "1"}
+    run(
+        [
+            "git",
+            "clone",
+            "--filter=blob:none",
+            "--no-checkout",
+            "--single-branch",
+            hf_repo,
+            str(dest),
+        ],
+        env=env,
+        hint=(
+            "ensure the public key paired with CI secrets.MY_PRIVATE_KEY_1 "
+            "is added at https://huggingface.co/settings/keys"
+        ),
+    )
+    reset_hf_repo_to_root(dest)
+
+
+def verify_hf_commit_count(dest: Path, expected: int = 2) -> None:
+    count = int(
+        run(["git", "rev-list", "--count", "HEAD"], cwd=dest, capture=True).stdout.strip()
+    )
+    if count != expected:
+        raise RuntimeError(f"Expected {expected} commits after HF deploy, got {count}")
+    log(f">>> HF repo has {count} commits (root + deploy snapshot)")
+
+
 def deploy_hf(*, hf_repo: str, dest_path: str, dry_run: bool) -> int:
     root = repo_root()
     build_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     dest = Path(dest_path)
     hf_dockerfile = root / "Dockerfile.hugging_face"
-    artifacts = runtime_dir()
 
     if not hf_dockerfile.is_file():
         log(f">>> Missing {hf_dockerfile}", err=True)
@@ -498,153 +1046,56 @@ def deploy_hf(*, hf_repo: str, dest_path: str, dry_run: bool) -> int:
 
     log(f">>> Cloning HF Space to {dest}")
     try:
-        run(
-            ["git", "clone", hf_repo, str(dest)],
-            hint=(
-                "ensure the public key paired with CI secrets.MY_PRIVATE_KEY_1 "
-                "is added at https://huggingface.co/settings/keys"
-            ),
-        )
+        clone_hf_repo(hf_repo, dest)
     except subprocess.CalledProcessError:
-        log(f">>> git clone failed for {hf_repo}", err=True)
-        return 1
-
-    simulation_so = artifacts / "simulation.so"
-    if not simulation_so.is_file():
-        log(f">>> Missing {simulation_so}", err=True)
         return 1
 
     log(">>> Clearing HF workspace (keep .git)")
-    cloned_readme = dest / "README.md"
-    readme_prefix = resolve_hf_readme_prefix(cloned_readme)
+    readme_prefix = resolve_hf_readme_prefix(dest / "README.md")
     clear_dest_workspace(dest)
-
-    log(f">>> Copying {artifacts} -> {dest / '.simulation_core'}")
-    shutil.copytree(
-        artifacts,
-        dest / ".simulation_core",
-        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-    )
 
     versions = collect_repo_versions(root)
     readme_body = render_deploy_readme(root, build_time, versions)
     commit_message = f"{readme_prefix.rstrip()}\n\n{readme_body}"
     (dest / "README.md").write_text(commit_message, encoding="utf-8")
-    log(f">>> Wrote README.md (BUILD_TIME={build_time})")
-    for v in versions:
-        log(f"    {v.name}: {v.commit[:12]} {v.author} <{v.email}> {v.subject}")
-
     write_dockerfile(hf_dockerfile, dest, build_time)
-    log(f">>> Wrote Dockerfile from Dockerfile.hugging_face with BUILD_TIME={build_time}")
+    log(f">>> Wrote Dockerfile + README (BUILD_TIME={build_time})")
 
     if dry_run:
         log(">>> dry-run: skip git commit/push")
         log(">>> commit message preview:")
         log(commit_message)
-        setup_lfs_for_artifacts(dest)
         return 0
 
-    ensure_git_xet()
-    setup_lfs_for_artifacts(dest)
-    run(["git", "add", ".gitattributes"], cwd=dest)
     run(["git", "add", "-A"], cwd=dest)
-    lfs_list = run(["git", "lfs", "ls-files"], cwd=dest, capture=True)
-    log(">>> git lfs ls-files:")
-    log(lfs_list.stdout.strip() or "(empty)")
     status = run(["git", "status", "--porcelain"], cwd=dest, capture=True)
     if not status.stdout.strip():
         log(">>> No changes to deploy")
         return 0
 
     git_commit_with_message(dest, commit_message, root)
+    verify_hf_commit_count(dest)
     ensure_hf_endpoint()
-    push = subprocess.run(["git", "push"], cwd=dest, capture_output=True, text=True)
+    push = subprocess.run(
+        ["git", "push", "--force"],
+        cwd=dest,
+        env=subprocess_env(),
+        capture_output=True,
+        text=True,
+    )
     if push.returncode != 0:
-        log(f">>> Command failed (exit {push.returncode}): git push", err=True)
+        log(f">>> git push --force failed (exit {push.returncode})", err=True)
         if push.stdout:
             log(push.stdout.rstrip(), err=True)
         if push.stderr:
             log(push.stderr.rstrip(), err=True)
-        combined = (push.stdout or "") + (push.stderr or "")
-        if "HF_ENDPOINT" in combined or 'custom adapter "xet"' in combined:
-            log(
-                f">>> git-xet push failed: set HF_ENDPOINT={HF_ENDPOINT} and use "
-                f"remote URL {DEFAULT_HF_REPO!r} (not ssh://…:22/…)",
-                err=True,
-            )
-        elif "Permission denied" in combined or "Could not read from remote" in combined:
-            log(
-                ">>> git push auth failed: add the public key paired with "
-                "CI secrets.MY_PRIVATE_KEY_1 at https://huggingface.co/settings/keys",
-                err=True,
-            )
-        else:
-            log(
-                ">>> git push failed: ensure git-lfs + git-xet track .simulation_core "
-                "binaries (.gitattributes) and Space write access",
-                err=True,
-            )
         return 1
 
     log(">>> Successfully pushed to Hugging Face Space")
     return 0
 
 
-def cmd_build(_args: argparse.Namespace) -> int:
-    return run_build_pipeline()
-
-
-def cmd_local(_args: argparse.Namespace) -> int:
-    code = run_build_pipeline()
-    if code != 0:
-        return code
-    return start_local_server()
-
-
-def cmd_docker(_args: argparse.Namespace) -> int:
-    root = repo_root()
-    simulation_root = simulation_core_root()
-
-    code = run_build_pipeline()
-    if code != 0:
-        return code
-
-    if not shutil.which("docker"):
-        print(
-            "错误: 未找到 docker 命令。请先安装 Docker 并确保在 PATH 中；",
-            "若使用 WSL 2，请在 Docker Desktop 设置中启用 WSL 集成。",
-            file=sys.stderr,
-        )
-        print("参见: https://docs.docker.com/go/wsl2/", file=sys.stderr)
-        return 1
-
-    db_dest = simulation_root / "assets" / "database"
-    prepare_database_bundle(db_dest, resolve_database_source())
-
-    image_tag = DEFAULT_DOCKER_IMAGE_TAG
-    print(f">>> 使用 Dockerfile 构建镜像: {image_tag}")
-    run(
-        [
-            "docker",
-            "build",
-            "-f",
-            str(root / "Dockerfile"),
-            "-t",
-            image_tag,
-            str(root),
-        ]
-    )
-
-    print(f">>> 验证镜像内材料库: {image_tag}")
-    verify_docker_image(image_tag)
-    print("======== 全部完成 ========")
-    return 0
-
-
 def cmd_hf(args: argparse.Namespace) -> int:
-    code = run_build_pipeline()
-    if code != 0:
-        return code
     return deploy_hf(
         hf_repo=DEFAULT_HF_REPO,
         dest_path=HF_DEPLOY_DEST,
@@ -652,22 +1103,76 @@ def cmd_hf(args: argparse.Namespace) -> int:
     )
 
 
+CONSUME_COMMANDS = frozenset({"local", "release", "docker", "hf"})
+BUILD_COMMAND = "build"
+
+
+def parse_invocation(args: argparse.Namespace) -> tuple[bool, str | None]:
+    """Return (run_build, consume_command_or_none)."""
+    step1, step2 = args.step1, args.step2
+    if step2 is not None and step1 != BUILD_COMMAND:
+        raise SystemExit("双步骤仅支持 'build <local|release|docker|hf>'")
+    if step1 is None:
+        return True, None
+    if step1 == BUILD_COMMAND:
+        return True, step2
+    if step1 in CONSUME_COMMANDS:
+        if step2 is not None:
+            raise SystemExit(f"不支持 '{step1} {step2}'；消费子命令不可串联")
+        return False, step1
+    raise SystemExit(f"未知步骤: {step1!r}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="simulation_toykits 编译与部署（默认仅 build/collect）",
+        description="simulation_toykits 编译与部署（build 可与 local/docker/hf/release 组合）",
     )
-    parser.set_defaults(func=cmd_build)
-    sub = parser.add_subparsers(dest="command")
-
-    sub.add_parser("build", help="编译并 collect 到 .simulation_core/").set_defaults(func=cmd_build)
-    sub.add_parser("local", help="build + 启动 Streamlit（脚本设置运行 env）").set_defaults(func=cmd_local)
-    sub.add_parser("docker", help="build + 构建 Docker 镜像").set_defaults(func=cmd_docker)
-    hf_parser = sub.add_parser("hf", help="build + 推送到 Hugging Face Space")
-    hf_parser.add_argument("--dry-run", action="store_true", help="build 后仅预览 push，不 git push")
-    hf_parser.set_defaults(func=cmd_hf)
+    parser.add_argument(
+        "--download_toolkits",
+        action="store_true",
+        help="下载 GitHub Release latest artifact 到 .simulation_toolkits/",
+    )
+    parser.add_argument("--toolkits", action="store_true", help="编译 collect + prune 插件")
+    parser.add_argument("--bench", action="store_true", help="FreeSnell 比对 HTML")
+    parser.add_argument("--database", action="store_true", help="预编译 database.bin")
+    parser.add_argument(
+        "step1",
+        nargs="?",
+        choices=[BUILD_COMMAND, *sorted(CONSUME_COMMANDS)],
+        help="build（编译）或消费子命令；默认无参数 = 全量 build",
+    )
+    parser.add_argument(
+        "step2",
+        nargs="?",
+        choices=sorted(CONSUME_COMMANDS),
+        help="与 step1=build 组合：build local / build docker / build hf / build release",
+    )
+    parser.add_argument("--dry-run", action="store_true", help="hf: 仅预览，不 push")
 
     args = parser.parse_args()
-    return args.func(args)
+
+    if args.download_toolkits:
+        if args.step1 or args.step2 or args.toolkits or args.bench or args.database:
+            parser.error("--download_toolkits 与其它选项互斥")
+        return cmd_download_toolkits(args)
+
+    do_build, consume = parse_invocation(args)
+    handlers = {
+        "local": cmd_local,
+        "release": cmd_release,
+        "docker": cmd_docker,
+        "hf": cmd_hf,
+    }
+
+    if do_build:
+        code = cmd_build(args)
+        if code != 0:
+            if consume:
+                print(f"错误: build 失败，跳过 {consume}", file=sys.stderr)
+            return code
+    if consume:
+        return handlers[consume](args)
+    return 0
 
 
 if __name__ == "__main__":

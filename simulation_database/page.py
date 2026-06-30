@@ -13,16 +13,15 @@ import streamlit.components.v1 as components
 
 import simulation_database_parser as sdp
 
+from simulation_database.database_precompiling import get_precompiled_leaf_object, panel_search_catalog
 from simulation_database.database_ui import (
     build_tree_nodes_for_panel,
     dump_object_as_csv,
+    get_tree_children,
     infer_leaf_kind,
     material_nk_arrays,
-    material_variant_label,
-    object_catalog_name,
     object_unique_name,
     path_id,
-    search_db_paths,
     spectrum_arrays,
 )
 from simulation_database.plots import (
@@ -83,6 +82,7 @@ def simulation_db_panel(
     search_mode: bool,
     search_results: list[dict[str, Any]],
     search_query: str,
+    search_catalog: dict[str, Any],
     workspace: dict[str, Any],
     preview: dict[str, Any] | None,
     status: str = "",
@@ -102,6 +102,7 @@ def simulation_db_panel(
         search_mode=search_mode,
         search_results=search_results,
         search_query=search_query,
+        search_catalog=search_catalog,
         workspace=workspace,
         preview=preview if preview is not None else {},
         status=status,
@@ -130,16 +131,15 @@ class PanelActionResult:
 
 
 def _load_presented(sim_db: Any, path_keys: list[str]) -> PresentedLeaf:
-    obj = sdp.read_at_query_path(sim_db, path_keys)
+    del sim_db
+    obj = get_precompiled_leaf_object(path_keys)
     kind = infer_leaf_kind(obj)
-    catalog = object_catalog_name(obj)
     unique = object_unique_name(obj)
     return PresentedLeaf(
         kind=kind,
         obj=obj,
-        breadcrumb=material_variant_label(obj) if kind == "material" else catalog,
+        breadcrumb=unique,
         path_keys=list(path_keys),
-        catalog_name=catalog,
         unique_name=unique,
     )
 
@@ -148,14 +148,6 @@ def _maybe_dump(obj: Any, download: bool) -> tuple[bytes | None, str | None]:
     if not download:
         return None, None
     return dump_object_as_csv(obj)
-
-
-def _workspace_object(ws: SimWorkspace, kind: str, catalog_name: str) -> Any | None:
-    if kind == "spectrum":
-        entry = ws.spectra.get(catalog_name)
-        return entry.obj if entry is not None else None
-    entry = ws.materials.get(catalog_name)
-    return entry.obj if entry is not None else None
 
 
 WL_FROM_KEY = "sim_db_wl_from"
@@ -176,7 +168,7 @@ def handle_panel_action(
 
     if act == "download_toggle":
         ui.download_on_action = bool(action.get("enabled", False))
-        result.status = "下载 CSV：已开启（加入/双击卡片时）" if ui.download_on_action else "下载 CSV：已关闭"
+        result.status = "下载 CSV：已开启（加入工作区时）" if ui.download_on_action else "下载 CSV：已关闭"
         return result
 
     if act == "clear_workspace":
@@ -198,6 +190,11 @@ def handle_panel_action(
     elif act == "clear_search":
         ui.search_query = ""
         return result
+    elif act == "resync_search_catalog":
+        entry = st.session_state.get(SEARCH_CATALOG_SESSION_KEY)
+        if isinstance(entry, dict):
+            entry["sent"] = False
+        return result
     elif act == "expand":
         node_path_id = action.get("path_id", "")
         if node_path_id:
@@ -209,37 +206,31 @@ def handle_panel_action(
             ui.expanded_paths.discard(node_path_id)
         return result
     elif act == "remove":
-        name = action.get("name", "")
+        unique_name = action.get("unique_name", "")
         kind = action.get("kind", "material")
         if kind == "spectrum":
-            if name in ws.spectra:
-                del ws.spectra[name]
-                if ws.last_added_spectrum == name:
+            if unique_name in ws.spectra:
+                del ws.spectra[unique_name]
+                if ws.last_added_spectrum == unique_name:
                     ws.last_added_spectrum = None
-                if ws.focus and ws.focus.kind == "spectrum" and ws.focus.name == name:
+                if ws.focus and ws.focus.kind == "spectrum" and ws.focus.unique_name == unique_name:
                     ws.focus = None
                 workspace_changed = True
-                result.toast = f"已移除光谱 {name}"
-        elif name in ws.materials:
-            del ws.materials[name]
-            if ws.focus and ws.focus.name == name:
+                result.toast = f"已移除光谱 {unique_name}"
+        elif unique_name in ws.materials:
+            del ws.materials[unique_name]
+            if ws.focus and ws.focus.unique_name == unique_name:
                 ws.focus = None
-            if ws.last_added_material == name:
+            if ws.last_added_material == unique_name:
                 ws.last_added_material = None
             workspace_changed = True
-            result.toast = f"已移除 {name}"
+            result.toast = f"已移除 {unique_name}"
     elif act == "focus":
         kind = action.get("kind", "material")
-        name = action.get("name", "")
-        if kind and name:
-            ws.focus = FocusEntry(kind=kind, name=name)
+        unique_name = action.get("unique_name", "")
+        if kind and unique_name:
+            ws.focus = FocusEntry(kind=kind, unique_name=unique_name)
             ws.preview = None
-            if action.get("download") and ui.download_on_action:
-                obj = _workspace_object(ws, kind, name)
-                if obj is not None:
-                    zip_b, zip_f = _maybe_dump(obj, True)
-                    result.download_bytes = zip_b
-                    result.download_filename = zip_f
         return result
     elif act in ("preview", "add"):
         path_keys = action.get("path_keys") or []
@@ -254,7 +245,7 @@ def handle_panel_action(
 
         if act == "preview":
             ws.preview = presented
-            result.status = f"预览: {presented.catalog_name}"
+            result.status = f"预览: {presented.unique_name}"
             return result
 
         if ui.download_on_action:
@@ -262,26 +253,24 @@ def handle_panel_action(
             result.download_bytes = zip_b
             result.download_filename = zip_f
 
-        catalog = presented.catalog_name
+        unique = presented.unique_name
         if presented.kind == "spectrum":
             add_spectrum_entry(
                 ws,
                 presented.obj,
                 presented.path_keys,
-                catalog_name=catalog,
-                unique_name=presented.unique_name,
-                breadcrumb=presented.catalog_name,
+                unique_name=unique,
+                breadcrumb=unique,
             )
-            ws.focus = FocusEntry(kind="spectrum", name=catalog)
+            ws.focus = FocusEntry(kind="spectrum", unique_name=unique)
         else:
             add_material_entry(
                 ws,
                 presented.obj,
                 presented.path_keys,
-                catalog_name=catalog,
-                unique_name=presented.unique_name,
+                unique_name=unique,
             )
-            ws.focus = FocusEntry(kind="material", name=catalog)
+            ws.focus = FocusEntry(kind="material", unique_name=unique)
         ws.preview = None
         workspace_changed = True
 
@@ -291,6 +280,45 @@ def handle_panel_action(
 
 
 ROOT_BOOTSTRAP_DONE_KEY = "sim_db_roots_bootstrapped"
+
+SEARCH_CATALOG_SESSION_KEY = "sim_db_panel_search_catalog"
+STREAMLIT_PAGE_KEY = "_streamlit_active_page_key"
+STREAMLIT_PAGE_ENTERED_KEY = "_streamlit_page_just_entered"
+
+
+def mark_streamlit_page_transition(pg) -> None:
+    """Record whether the active Streamlit page changed since the last app rerun."""
+    page_key = pg.url_path or pg.title or ""
+    prev_key = st.session_state.get(STREAMLIT_PAGE_KEY)
+    st.session_state[STREAMLIT_PAGE_ENTERED_KEY] = prev_key != page_key
+    st.session_state[STREAMLIT_PAGE_KEY] = page_key
+
+
+def _on_sim_db_page_enter() -> None:
+    if not st.session_state.pop(STREAMLIT_PAGE_ENTERED_KEY, True):
+        return
+    entry = st.session_state.get(SEARCH_CATALOG_SESSION_KEY)
+    if isinstance(entry, dict):
+        entry["sent"] = False
+
+
+def _search_catalog_for_browser(sim_db) -> dict[str, Any]:
+    """Build catalog once per session; send full payload only on first browser render."""
+    db_root = str(Path(sim_db.local_path()).resolve())
+    entry = st.session_state.get(SEARCH_CATALOG_SESSION_KEY)
+    if not isinstance(entry, dict) or entry.get("root") != db_root:
+        catalog = panel_search_catalog(sim_db)
+        entry = {"root": db_root, "catalog": catalog, "sent": False}
+        st.session_state[SEARCH_CATALOG_SESSION_KEY] = entry
+    catalog = entry["catalog"]
+    fingerprint = catalog.get("fingerprint", "")
+    if not entry.get("sent"):
+        entry["sent"] = True
+        return catalog
+    return {"entries": [], "inverted": {}, "fingerprint": fingerprint}
+
+
+_EMPTY_SEARCH_CATALOG: dict[str, Any] = {"entries": [], "inverted": {}}
 
 PANEL_HEIGHT = 720
 
@@ -306,16 +334,12 @@ VIZ_ACTION_PRIORITY = {
     "preview": 1,
 }
 
-TREE_ONLY_ACTIONS = frozenset(
-    {"expand", "collapse", "search", "clear_search", "download_toggle"}
-)
+TREE_ONLY_ACTIONS = frozenset({"expand", "collapse", "download_toggle", "resync_search_catalog"})
 
 TREE_CACHE_BUST_ACTIONS = frozenset(
     {
         "expand",
         "collapse",
-        "search",
-        "clear_search",
         "add",
         "remove",
         "clear_workspace",
@@ -328,40 +352,25 @@ def _viz_action_rank(action: dict) -> tuple[int, int]:
     return (action.get("ts", 0), VIZ_ACTION_PRIORITY.get(act, 0))
 
 
-def _bootstrap_root_tree_expansion(sim_db, ws, ui) -> None:
+def _bootstrap_root_tree_expansion(sim_db, ui) -> None:
     if st.session_state.get(ROOT_BOOTSTRAP_DONE_KEY):
         return
-    if ui.search_query:
-        st.session_state[ROOT_BOOTSTRAP_DONE_KEY] = True
-        return
-
-    pending: list[tuple[str, list[str]]] = []
-    root_query = sim_db.query()
-    for key in root_query.keys:
-        path_keys = [key]
-        root_id = path_id(path_keys)
-        if root_id not in ui.expanded_paths:
-            pending.append((root_id, path_keys))
-
     st.session_state[ROOT_BOOTSTRAP_DONE_KEY] = True
-    if not pending:
+    if ui.search_query:
         return
 
-    ts = max(ui.panel_processed_ts, 0) + 1
-    for root_id, path_keys in pending:
-        _apply_panel_action(
-            sim_db,
-            ws,
-            ui,
-            {
-                "action": "expand",
-                "path_id": root_id,
-                "path_keys": path_keys,
-                "ts": ts,
-            },
-        )
-        ts += 1
-    st.rerun(scope="app")
+    changed = False
+    for meta in get_tree_children(sim_db, [], ui.children_cache):
+        if meta["is_leaf"]:
+            continue
+        pid = meta["path_id"]
+        if pid not in ui.expanded_paths:
+            ui.expanded_paths.add(pid)
+            changed = True
+
+    if changed:
+        ui.tree_cache_key = None
+        ui.tree_nodes_cache = None
 
 
 def _ensure_wl_widget_defaults(ui) -> None:
@@ -405,7 +414,7 @@ def _plot_wl_bounds(sim_from: float | None, sim_to: float | None) -> tuple[float
 
 
 def _tree_cache_key(ui) -> tuple:
-    return (frozenset(ui.expanded_paths), ui.search_query)
+    return (frozenset(ui.expanded_paths),)
 
 
 def _tree_nodes_for_panel(sim_db, ui) -> list:
@@ -420,18 +429,15 @@ def _tree_nodes_for_panel(sim_db, ui) -> list:
 
 def _build_panel_common(sim_db, ws, ui) -> dict:
     tree_nodes = _tree_nodes_for_panel(sim_db, ui)
-    search_query = ui.search_query
-    search_mode = bool(search_query)
-    search_results = search_db_paths(sim_db, search_query) if search_mode else []
     warnings = workspace_range_warnings(ws, ui)
     workspace_dict = workspace_to_panel_dict(ws, warnings)
     preview_dict = workspace_dict.get("preview") or {}
     return dict(
         tree_nodes=tree_nodes,
         expanded_paths=list(ui.expanded_paths),
-        search_mode=search_mode,
-        search_results=search_results,
-        search_query=search_query,
+        search_mode=False,
+        search_results=[],
+        search_query="",
         workspace=workspace_dict,
         preview=preview_dict,
         status=ui.panel_status,
@@ -499,8 +505,19 @@ def _process_panel_actions(
         st.rerun(scope="app")
 
 
-def render_page(*, tokens_path: Path) -> None:
+def render_page(
+    *,
+    tokens_path: Path,
+    material_path_keys: list[list[str]] | None = None,
+    required_material_names: frozenset[str] | None = None,
+    spectrum_path_keys: list[str] | None = None,
+) -> None:
     """Render the simulation database three-column page."""
+    if material_path_keys is None or required_material_names is None or spectrum_path_keys is None:
+        raise ValueError(
+            "render_page requires material_path_keys, required_material_names, and spectrum_path_keys"
+        )
+    _on_sim_db_page_enter()
     tokens_css = tokens_path.read_text(encoding="utf-8")
     st.set_page_config(page_title="仿真数据库", layout="wide")
     inject_global_styles(tokens_css)
@@ -591,8 +608,18 @@ def render_page(*, tokens_path: Path) -> None:
     )
 
     sim_db = sdp.get_simulation_database(init=True)
-    ws, ui = ensure_workspace_initialized(sim_db)
-    _bootstrap_root_tree_expansion(sim_db, ws, ui)
+    from simulation_database.database_precompiling import load_or_build_database_index
+
+    load_or_build_database_index(sim_db)
+
+    ws, ui = ensure_workspace_initialized(
+        sim_db,
+        material_path_keys=material_path_keys,
+        spectrum_path_keys=spectrum_path_keys,
+        strict=True,
+        required_material_names=required_material_names,
+    )
+    _bootstrap_root_tree_expansion(sim_db, ui)
     sim_from, sim_to = _sync_sim_wl_state(ws, ui)
     plot_from, plot_to = _plot_wl_bounds(sim_from, sim_to)
 
@@ -606,6 +633,7 @@ def render_page(*, tokens_path: Path) -> None:
     with col_browser:
         panel_action_browser = simulation_db_panel(
             **_panel_kwargs,
+            search_catalog=_search_catalog_for_browser(sim_db),
             auto_download_base64=auto_download_base64,
             auto_download_filename=auto_download_filename,
             section="browser",
@@ -615,6 +643,7 @@ def render_page(*, tokens_path: Path) -> None:
     with col_workspace:
         panel_action_workspace = simulation_db_panel(
             **_panel_kwargs,
+            search_catalog=_EMPTY_SEARCH_CATALOG,
             auto_download_base64=auto_download_base64,
             auto_download_filename=auto_download_filename,
             section="workspace",
@@ -660,39 +689,39 @@ def render_page(*, tokens_path: Path) -> None:
         def _resolve_spectrum_plot():
             preview = ws.preview
             if preview and preview.kind == "spectrum":
-                return preview.obj, preview.catalog_name, True
-            if ws.focus and ws.focus.kind == "spectrum" and ws.focus.name in ws.spectra:
-                entry = ws.spectra[ws.focus.name]
-                return entry.obj, ws.focus.name, False
+                return preview.obj, preview.unique_name, True
+            if ws.focus and ws.focus.kind == "spectrum" and ws.focus.unique_name in ws.spectra:
+                entry = ws.spectra[ws.focus.unique_name]
+                return entry.obj, ws.focus.unique_name, False
             if ws.last_added_spectrum and ws.last_added_spectrum in ws.spectra:
                 entry = ws.spectra[ws.last_added_spectrum]
                 return entry.obj, ws.last_added_spectrum, False
             if ws.spectra:
-                catalog = next(reversed(ws.spectra))
-                entry = ws.spectra[catalog]
-                return entry.obj, catalog, False
+                unique = next(reversed(ws.spectra))
+                entry = ws.spectra[unique]
+                return entry.obj, unique, False
             return None, None, False
 
         def _resolve_material_plot():
             preview = ws.preview
             if preview and preview.kind == "material":
-                return preview.obj, preview.catalog_name, True
-            if ws.focus and ws.focus.kind == "material" and ws.focus.name in ws.materials:
-                mat = ws.materials[ws.focus.name].obj
-                return mat, ws.focus.name, False
+                return preview.obj, preview.unique_name, True
+            if ws.focus and ws.focus.kind == "material" and ws.focus.unique_name in ws.materials:
+                mat = ws.materials[ws.focus.unique_name].obj
+                return mat, ws.focus.unique_name, False
             if ws.last_added_material and ws.last_added_material in ws.materials:
                 mat = ws.materials[ws.last_added_material].obj
                 return mat, ws.last_added_material, False
             return None, None, False
 
-        focus_key = ws.focus.name if ws.focus else "none"
+        focus_key = ws.focus.unique_name if ws.focus else "none"
         spec_focus_key = focus_key if ws.focus and ws.focus.kind == "spectrum" else "none"
         mat_focus_key = focus_key if ws.focus and ws.focus.kind == "material" else "none"
         spec_preview_key = (
-            ws.preview.catalog_name if ws.preview and ws.preview.kind == "spectrum" else "none"
+            ws.preview.unique_name if ws.preview and ws.preview.kind == "spectrum" else "none"
         )
         mat_preview_key = (
-            ws.preview.catalog_name if ws.preview and ws.preview.kind == "material" else "none"
+            ws.preview.unique_name if ws.preview and ws.preview.kind == "material" else "none"
         )
         plot_rev = ui.viz_rev
 

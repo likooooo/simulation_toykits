@@ -66,6 +66,22 @@ class TestParseFormula:
         with pytest.raises(ValueError, match="incomplete layer"):
             parse_filmstack_formula_v1("SiO2 0.1 SiO2")
 
+    def test_maxwell_garnett_bracket_parse(self):
+        got = parse_filmstack_formula_v1("air 0 [2e-6 au glass 1.5] 4000.0 air 0")
+        assert len(got) == 3
+        mg = got[1]
+        assert mg["Material"] == "maxwell_garnett"
+        assert mg["mg_q"] == pytest.approx(2e-6)
+        assert mg["mg_inclusion"] == "au"
+        assert mg["mg_host_name"] == "glass"
+        assert mg["mg_host_inline_n"] == pytest.approx(1.5)
+        assert mg["Thickness (um)"] == pytest.approx(4000.0)
+
+    def test_maxwell_garnett_host_from_db_parse(self):
+        got = parse_filmstack_formula_v1("[8e-6 au BK7] 1.0")
+        assert got[0]["mg_host_from_db"] is True
+        assert got[0]["mg_q"] == pytest.approx(8e-6)
+
     def test_normalize_newlines(self):
         raw = "air 0\n(SiO2 0.1 Ta2O5 0.02)^2\nSi 0"
         flat = "air 0 (SiO2 0.1 Ta2O5 0.02)^2 Si 0"
@@ -106,8 +122,29 @@ class TestLayersFromFormula:
         _, th = layers_from_formula("air 0 SiO2 0.1 1.46 0 Si 0.1 3.87 0.02", {}, simulation_module=simulation)
         assert th == [0.0, 0.1, 0.1, 0.0]
 
+    def test_maxwell_garnett_layer(self, simulation):
+        au = simulation.material_s.from_nk(0.17 + 3.0j, "au")
+        db = {"au": au}
+        formula = "air 0 1.0 0.0 [2e-6 au glass 1.5] 4000.0 air 0 1.0 0.0"
+        mats, th = layers_from_formula(formula, db, simulation_module=simulation)
+        assert th == [0.0, 4000.0, 0.0]
+        mg_mat = mats[1]
+        assert mg_mat.active_model == simulation.material_model_kind.maxwell_garnett
+        nk = mg_mat.nk_at_wavelength_um(0.546)
+        assert float(nk.real) > 0
+        assert float(nk.imag) >= 0
 
-class TestBuildTmmLayers:
+    def test_maxwell_garnett_db_host(self, simulation, materials_db):
+        if "N-BK7" not in materials_db or "au" not in materials_db:
+            pytest.skip("MG test materials not in workspace db")
+        formula = "air 0 [2e-6 au N-BK7] 1.0 air 0"
+        mats, th = layers_from_formula(formula, materials_db, simulation_module=simulation)
+        assert th == [0.0, 1.0, 0.0]
+        mg_mat = mats[1]
+        assert mg_mat.active_model == simulation.material_model_kind.maxwell_garnett
+        nk = mg_mat.nk_at_wavelength_um(0.55)
+        assert float(nk.real) > 0
+
     def test_attach_layers_from_formula(self, simulation):
         materials, thicknesses = layers_from_formula(
             "air 0 SiO2 0.1 1.46 0 Si 0 3.87 0.02",

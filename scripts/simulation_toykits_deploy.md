@@ -11,7 +11,7 @@
 ### 读者与用途
 
 - **读者**：改 C++ / Python 插件 / Streamlit 页面，或负责 CI / Docker / HF 的开发者。
-- **用途**：理解 `.simulation_core/` 内容；改代码后选对 deploy 命令；正确配置 `PYTHONPATH` / `SIMULATION_*`。
+- **用途**：理解 `.simulation_toolkits/` 内容；改代码后选对 deploy 命令；正确配置 `PYTHONPATH` / `SIMULATION_*`。
 
 ### 前置
 
@@ -66,7 +66,7 @@ flowchart LR
   SimPlugSrc[simulation_core/simulation_plugins]
   CmakeBuild[cmake build 输出 simulation.so + staged plugins]
   Collect[build_simulation --collect]
-  Runtime[".simulation_core/ 运行时目录"]
+  Runtime[".simulation_toolkits/ 运行时目录"]
 
   InfraPCP -->|stage_plugins| CmakeBuild
   SimPlugSrc -->|stage_plugins| CmakeBuild
@@ -85,7 +85,7 @@ flowchart LR
 flowchart BT
   Host[simulation_toykits 宿主]
   Portable[filmstack_simulation + simulation_database]
-  Runtime[".simulation_core/: simulation.so + plugins"]
+  Runtime[".simulation_toolkits/: simulation.so + plugins"]
   Infra[infrastructure 编译出的 .so]
   Assets[assets 数据与 TMM 脚本]
   TMM[TMM 脚本]
@@ -96,7 +96,7 @@ flowchart BT
   TMM --> Runtime
   Runtime --> Infra
   Runtime -.->|env 读文件| Assets
-  TMM -.->|SIMULATION_TMM_ASSETS_DIR| Assets
+  TMM --> Assets
 ```
 
 **运行时依赖表**：
@@ -111,7 +111,6 @@ flowchart BT
 | **无** `py_core_plugins` → `simulation_plugins` | 无反向 import |
 | C++ → Python 插件 | [`simulation_database.cpp`](../../simulation_core/src/simulation_database.cpp) 调用 `simulation_database_parser` |
 | TMM 脚本 → runtime | notebook / 测试 `import simulation` |
-| `assets/database` | **不被 import**；C++ / parser 经 `SIMULATION_DATABASE_DIR` 读文件（虚线） |
 
 **init 顺序说明**：`import simulation` 会 eager-load `simulation_plugins`，部分插件在业务函数内再 `import simulation` 取 API。源码无 import cycle，但有 init 顺序约束（函数内 lazy import / `sys.modules["simulation"]` 解开）。架构图不画 `SPL → SimMod` 回边。
 
@@ -122,8 +121,8 @@ flowchart BT
 | External | 系统 / PyPI | — | infrastructure、simulation_core |
 | infrastructure | `3rdparty/infrastructure/` | External | simulation_core C++ build |
 | simulation_core 源码 | C++ + `simulation_plugins/` | infrastructure、External | deploy → runtime；TMM 脚本 |
-| assets | `assets/database`、`assets/ipynb/` | —（数据） | runtime / TMM **经 env 读取** |
-| `.simulation_core/` | collect 产物 | 由 build 生成 | 所有 `import simulation` |
+| assets | `assets/ipynb/` | —（数据） | runtime / TMM **经 env 读取** |
+| `.simulation_toolkits/` | collect 产物 | 由 build 生成 | 所有 `import simulation` |
 | 可移植包 | `filmstack_simulation/`、`simulation_database/` | runtime | toykits `pages/` |
 | toykits 宿主 | `app.py`、`pages/`、`core/`、`common.py` | 可移植包 + runtime | 最终用户 |
 
@@ -137,7 +136,7 @@ flowchart BT
 | [`simulation_core/simulation_plugins/`](../../simulation_core/simulation_plugins/) | simulation 耦合插件（`filmstack_visualizer`、`simulation_database_parser`、`tmm_utils` 等） |
 | [`filmstack_simulation/`](../../filmstack_simulation/)、[`simulation_database/`](../../simulation_database/) | 可拷贝到其他 Streamlit 项目 |
 | [`core/`](../../core/)、[`pages/`](../../pages/)、[`ui/`](../../ui/)、[`app.py`](../../app.py) | 宿主胶水，不可被可移植包依赖 |
-| [`.simulation_core/`](../../.simulation_core/) | gitignore 运行时产物目录 |
+| [`.simulation_toolkits/`](../../.simulation_toolkits/) | gitignore 运行时产物目录 |
 
 ### 2.7 已知限制
 
@@ -149,7 +148,7 @@ flowchart BT
 
 ## 3. 部署依赖基础知识
 
-### 3.1 `.simulation_core/` 内容
+### 3.1 `.simulation_toolkits/` 内容
 
 collect 后期望目录（与 [`build_simulation.py --collect`](../../simulation_core/scripts/build_simulation.py) 一致）：
 
@@ -159,7 +158,6 @@ collect 后期望目录（与 [`build_simulation.py --collect`](../../simulation
 | 非系统 `.so`（如 `libuca.so`、`libpy_visualizer.so`） | `ldd` 递归收集 |
 | `py_core_plugins/` | `stage_plugins` 从 infrastructure 源码 |
 | `simulation_plugins/` | `stage_plugins` 从 simulation_core 源码 |
-| `assets/database/` | collect 从 `simulation_core/assets/database` |
 | `test_diffraction` | `build_toykits` 从 `build/` 额外复制（衍射角计算器） |
 
 ### 3.2 deploy 流水线（toykits）
@@ -168,23 +166,24 @@ collect 后期望目录（与 [`build_simulation.py --collect`](../../simulation
 flowchart LR
   build["build_toykits.py / build_simulation.py --collect"]
   diff["copy test_diffraction"]
-  runtime[".simulation_core/ 就绪"]
+  runtime[".simulation_toolkits/ 就绪"]
   build --> diff --> runtime
 ```
 
-实现：[`build_toykits.py`](build_toykits.py) 调用 `build_simulation.py --collect`；`local` / `docker` / `hf` 共用 `run_build_pipeline()`。
+实现：默认 `build_toykits.py` 全量编译；`build local` / `build docker` / `build hf` / `build release` 先编译再消费；单独 `local` / `docker` / `hf` / `release` **不隐式编译**。
 
 ### 3.3 环境契约
 
-**原则**：`PYTHONPATH`、`LD_LIBRARY_PATH` 与三个 `SIMULATION_*` 由 shell / CI / Docker 经 `source init-*-env` 设置；init 脚本**仅 export 预期路径**，不校验目录是否已存在（可在 `build_*.py` 之前 source）。产物与材料库是否就绪由 collect、`import simulation`、pytest 等后续阶段校验。Python 业务代码**不**做 `sys.path` 探测、**不** `try/except` 包裹 `import simulation`。
+**原则**：`PYTHONPATH`、`LD_LIBRARY_PATH` 与 `SIMULATION_*` 由 shell / CI / Docker 经 `source init-*-env` 设置；init 脚本**仅 export 预期路径**，不校验目录是否已存在（可在 `build_*.py` 之前 source）。产物是否就绪由 collect、`import simulation`、pytest 等后续阶段校验。Python 业务代码**不**做 `sys.path` 探测、**不** `try/except` 包裹 `import simulation`。
 
 | 变量 | toykits 典型值 | 用途 |
 |------|----------------|------|
-| `SIMULATION_ARTIFACTS_DIR` | `{repo}/.simulation_core` | `simulation.so` 与插件目录；C++ 经该环境变量解析插件路径 |
+| `SIMULATION_ARTIFACTS_DIR` | `{repo}/.simulation_toolkits` | `simulation.so` 与插件目录；C++ 经该环境变量解析插件路径 |
 | `PYTHONPATH` | `{repo}:{artifacts}` | 见 [`init-toykits-build-env.sh`](init-toykits-build-env.sh) |
 | `LD_LIBRARY_PATH` | `{artifacts}` | 动态库 |
-| `SIMULATION_DATABASE_DIR` | `.simulation_core/assets/database`（collect 后）或源码树 `simulation_core/assets/database` | 材料库**数据路径**（非 import） |
-| `SIMULATION_TMM_ASSETS_DIR` | `simulation_core/assets/ipynb/simulation/TMM` | TMM 脚本资源路径 |
+| `SIMULATION_DATABASE_DIR` | `{artifacts}/assets` | 预编译 `database.bin` 目录 |
+
+TMM 测试须先 `source init-toykits-build-env.sh`（或 core 的 `init-simulation-build-env.sh`），再执行 [`run_tmm.sh`](../../simulation_core/assets/ipynb/simulation/TMM/run_tmm.sh) `test` / `jupyter`。
 
 推荐一次性设置：
 
@@ -198,15 +197,16 @@ source scripts/init-toykits-build-env.sh
 2. `import simulation` 后 C++ 自动 eager-load `py_core_plugins`，再 eager-load `simulation_plugins`
 3. 业务代码直接 `import filmstack_visualizer`、`import tmm_utils` 等
 
-入口示例：[`app.py`](../../app.py) 为纯 Streamlit；`build_toykits local` 由脚本设置 `LD_LIBRARY_PATH` / `SIMULATION_DATABASE_DIR` 后启动 Streamlit。
+入口示例：[`app.py`](../../app.py) 为纯 Streamlit；`build_toykits local` 由脚本设置 `LD_LIBRARY_PATH` 后启动 Streamlit。
 
 ### 3.5 运行场景对照
 
 | 场景 | artifacts | PYTHONPATH 要点 | cwd |
 |------|-----------|-----------------|-----|
-| toykits Streamlit / pytest | `.simulation_core` | 含 repo root | artifacts |
+| toykits Streamlit / pytest | `.simulation_toolkits` | 含 repo root | `{repo}` |
 | simulation_core ctest | `build/` | `${CMAKE_BINARY_DIR}` only | `build/` |
-| Docker / HF Space | `/app/.simulation_core` | `/app` + artifacts | `/app` 或 artifacts |
+| Docker / HF Space | `/app/.simulation_toolkits` | `/app` + artifacts | `/app` 或 artifacts |
+| TMM Oghma 对齐测试 | `.simulation_toolkits` 或 `build/` | 同 toykits / core | TMM 脚本目录（`run_tmm.sh` cd） |
 
 独立 core 开发：[`simulation_core/scripts/init-simulation-build-env.sh`](../../simulation_core/scripts/init-simulation-build-env.sh)（无 repo root）。
 
@@ -220,19 +220,26 @@ source scripts/init-toykits-build-env.sh
 2. `git submodule update --init --recursive simulation_core`
 3. 手动 pytest / 调试前可选：`source scripts/init-toykits-build-env.sh`
 
-### SOP-1：首次本地运行（local deploy）
+### SOP-1：首次本地运行
+
+**编译路径**（需 `simulation_core` 子模块 + `requirements-build.txt`）：
 
 ```bash
 source .venv/bin/activate
+pip install -r requirements-build.txt
+python scripts/build_toykits.py    # 全量：toolkits + database + bench（无需事先 source init）
+```
+
+**消费路径**（仅需 artifact，CI 同款）：
+
+```bash
+pip install -r requirements.txt
+python scripts/build_toykits.py --download_toolkits
 source scripts/init-toykits-build-env.sh
 python scripts/build_toykits.py local
 ```
 
-步骤拆解：
-
-1. `build_simulation.py --collect .simulation_core`（含 `stage_plugins`、ldd、`assets/database`）
-2. `copy_test_diffraction`
-3. `start_local_server()` — 脚本设置运行 env 后启动 Streamlit `http://localhost:8052/`
+`local` 仅启动 Streamlit；artifact 缺失时报错并提示 build 或 download。
 
 ### SOP-2：日常开发 — 改了什么、跑什么
 
@@ -241,28 +248,26 @@ python scripts/build_toykits.py local
 | `simulation_plugins/` 或 `py_core_plugins/` Python | `python scripts/build_toykits.py` 或 `local` | 通常否（Streamlit 自动重载页面代码）；插件未生效则重启 |
 | C++ / `simulation.so` | 完整 `build_toykits local` 或 `build_toykits` | **是**（local 会重启 Streamlit） |
 | 宿主 `pages/` / `core/` / 可移植包 UI | 无需 collect | 否（Streamlit 自动重载） |
-| `simulation_core/assets/database` | 无需 rebuild；确认 `SIMULATION_DATABASE_DIR` | 否 |
 
 ### SOP-3：Docker 本地镜像
 
 ```bash
+export SIMULATION_DATABASE_KEY=...   # 验证容器内 database.bin 解密
 python scripts/build_toykits.py docker
-docker run -p 8052:8052 simulation-toykits:v1
+docker run -e SIMULATION_DATABASE_KEY=... -p 8052:8052 simulation-toykits:v1
 ```
 
-流程：`run_build_pipeline` → `prepare_database_bundle` → `docker build -f Dockerfile` → `verify_docker_image()`（容器内 `import simulation` + 材料库 smoke）。
+流程：检查 artifact → `docker build -f Dockerfile` → `verify_docker_image()`（须 `SIMULATION_DATABASE_KEY`）。
 
 ### SOP-4：Hugging Face Space 部署
 
-**CI 自动**（[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) push main）：`build_toykits` → pytest → `python scripts/build_toykits.py hf`。
+**CI 自动**（[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) push main）：`--download_toolkits` → pytest → `python scripts/build_toykits.py hf`。
 
 **手动前置**：
 
-- `.simulation_core/` 已存在且含 `simulation.so`
 - HF SSH 公钥与 GitHub `secrets.MY_PRIVATE_KEY_1` 配对
-- Space `SSH_PRIVATE_KEY` 用于 Docker 构建时 clone GitHub
 
-`deploy_hf` 行为：clone Space → 清空（保留 `.git`）→ 复制 `.simulation_core` → 写 README（BUILD_TIME + 三仓库 commit）→ `Dockerfile.hugging_face` → git-lfs + git-xet push。
+`deploy_hf` 行为：clone Space → 清空（保留 `.git`）→ 写 `Dockerfile.hugging_face` + README（BUILD_TIME + commit 信息）→ `git push --force`。HF Docker 构建时 HTTPS 克隆应用层，并从 [simulation_toolkits_artifacts](https://github.com/likooooo/simulation_toolkits_artifacts) **latest Release** 下载 `.simulation_toolkits/`。
 
 详见 [README.MD](../README.MD) HF 章节与 [`Dockerfile.hugging_face`](../../Dockerfile.hugging_face)。
 
@@ -278,8 +283,8 @@ source scripts/init-toykits-build-env.sh
 python -m pytest test/ -v
 
 # collect 完整性
-test -f .simulation_core/simulation_plugins/filmstack_visualizer.py
-test -f .simulation_core/simulation.so
+test -f .simulation_toolkits/simulation_plugins/filmstack_visualizer.py
+test -f .simulation_toolkits/simulation.so
 ```
 
 Docker：由 `verify_docker_image()` 在 `build_toykits docker` 末尾自动执行。
@@ -288,11 +293,28 @@ Docker：由 `verify_docker_image()` 在 `build_toykits docker` 末尾自动执�
 
 | 现象 | 检查 |
 |------|------|
-| `ImportError: simulation` | `PYTHONPATH` 是否含 artifacts；是否 `cd` 到 artifacts |
+| `ImportError: simulation` | 是否 `source scripts/init-toykits-build-env.sh`；`PYTHONPATH` 是否含 repo root 与 `.simulation_toolkits` |
 | 插件来自源码树而非 deploy 副本 | 重跑 `build_toykits`；确认已 `source scripts/init-toykits-build-env.sh` |
 | `SIMULATION_ARTIFACTS_DIR` 未设置 | 先 `build_toykits` 或 `source scripts/init-toykits-build-env.sh` |
-| Docker 缺材料库 | `prepare_database_bundle` / `SIMULATION_DATABASE_DIR` |
-| HF push 失败 | git-xet、LFS、`HF_ENDPOINT`、SSH 密钥 |
+| HF push 失败 | `HF_ENDPOINT`、SSH 密钥、Space 写权限 |
+
+### build_toykits.py
+
+| 调用 | 作用 |
+|------|------|
+| （默认）/ `build` | 全量编译 |
+| `--toolkits` / `--bench` / `--database` | 正向 flag，只跑列出的 build 步骤 |
+| `build local` / `build docker` / `build hf` / `build release` | 编译后接消费步骤 |
+| `local` / `docker` / `hf` / `release` | 仅消费（artifact 须已存在） |
+| `--download_toolkits` | 拉 GitHub Release latest |
+
+示例：
+
+```bash
+python scripts/build_toykits.py build release   # 编译 + 发布
+python scripts/build_toykits.py build local     # 编译 + Streamlit
+python scripts/build_toykits.py --toolkits build local  # 仅 toolkits 后启动
+```
 
 ---
 

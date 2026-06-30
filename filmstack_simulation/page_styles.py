@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import streamlit as st
 
-from filmstack_simulation.page_widgets import FORMULA_STACK_HEIGHT_PX
+from filmstack_simulation.page_widgets import (
+    OPT_FORMULA_STACK_HEIGHT_PX,
+    SIM_FORMULA_STACK_HEIGHT_PX,
+)
 
 _SIM_CSS = """        [data-testid="stAppViewContainer"]:has(.__PREFIX__-page-marker) [data-testid="block-container"],
         [data-testid="stAppViewContainer"]:has(.__PREFIX__-page-marker) [data-testid="stAppViewBlockContainer"] {{
@@ -68,14 +71,16 @@ _SIM_CSS = """        [data-testid="stAppViewContainer"]:has(.__PREFIX__-page-ma
         .__PREFIX__-input-row-marker,
         .__PREFIX__-formula-area-marker,
         .__PREFIX__-params-stack-marker,
-        .__PREFIX__-preset-pol-row-marker,
+        .__PREFIX__-preset-row-marker,
+        .__PREFIX__-pol-row-marker,
         .__PREFIX__-params-spacer-marker,
         .__PREFIX__-page-marker {{
             display: none;
         }}
         [data-testid="stElementContainer"]:has(> div > .__PREFIX__-formula-area-marker),
         [data-testid="stElementContainer"]:has(> div > .__PREFIX__-params-stack-marker),
-        [data-testid="stElementContainer"]:has(> div > .__PREFIX__-preset-pol-row-marker) {{
+        [data-testid="stElementContainer"]:has(> div > .__PREFIX__-preset-row-marker),
+        [data-testid="stElementContainer"]:has(> div > .__PREFIX__-pol-row-marker) {{
             display: none !important;
             margin: 0 !important;
             padding: 0 !important;
@@ -133,13 +138,6 @@ _SIM_CSS = """        [data-testid="stAppViewContainer"]:has(.__PREFIX__-page-ma
             [data-testid="stHorizontalBlock"] {{
             width: 100% !important;
             min-height: 2.25rem;
-        }}
-        [data-testid="stAppViewContainer"]:has(.__PREFIX__-page-marker)
-            [data-testid="stColumn"]:has(.__PREFIX__-params-stack-marker)
-            > div > [data-testid="stVerticalBlock"]
-            > [data-testid="stElementContainer"]:has(.__PREFIX__-preset-pol-row-marker)
-            + [data-testid="stElementContainer"] [data-testid="stSelectbox"] {{
-            width: 100% !important;
         }}
         [data-testid="stAppViewContainer"]:has(.__PREFIX__-page-marker)
             [data-testid="stColumn"]:has(.__PREFIX__-params-stack-marker)
@@ -327,16 +325,6 @@ _SIM_CSS = """        [data-testid="stAppViewContainer"]:has(.__PREFIX__-page-ma
             margin: 0 0 var(--space-2) 0;
             white-space: nowrap;
         }}
-        .__PREFIX__-chart-title {{
-            font-family: var(--font-ui);
-            font-size: 0.875rem;
-            font-weight: 600;
-            color: var(--color-text-secondary);
-            margin: var(--space-3) 0 var(--space-2) 0;
-            text-transform: uppercase;
-            letter-spacing: 0.03em;
-            white-space: nowrap;
-        }}
         [data-testid="stAppViewContainer"]:has(.__PREFIX__-page-marker) [data-testid="stButton"] > button {{
             font-family: var(--font-ui) !important;
             font-size: 0.875rem !important;
@@ -405,9 +393,12 @@ def _apply_prefix(css: str, *, prefix: str) -> str:
 def inject_page_styles(*, prefix: str, tokens_css: str, variant: str) -> None:
     """Inject design tokens plus page layout CSS (variant: ``sim`` or ``opt``)."""
     template = _SIM_CSS if variant == "sim" else _OPT_CSS
+    height_px = (
+        SIM_FORMULA_STACK_HEIGHT_PX if variant == "sim" else OPT_FORMULA_STACK_HEIGHT_PX
+    )
     body = _apply_prefix(template, prefix=prefix).replace(
         "__FORMULA_STACK_HEIGHT__",
-        f"{FORMULA_STACK_HEIGHT_PX}px",
+        f"{height_px}px",
     )
     st.markdown(
         f"""

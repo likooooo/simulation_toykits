@@ -180,6 +180,7 @@ function render(args) {
 
   if (args.help_url) {
     elLink.href = args.help_url;
+    elLink.textContent = args.help_url_label || "— 使用说明";
     elLinkWrap.classList.remove("hidden");
   } else {
     elLinkWrap.classList.add("hidden");

@@ -113,13 +113,13 @@ SYSTEM_PROMPT = """你是由 Simulation-toykits 部署的多层光学薄膜专�
 1. 每次回复可先写思考过程（以「思考：」开头），再输出 JSON。
 2. 若需要调用工具：输出一个 JSON，包含 "tool" 和 "arguments"。例如：
    思考：用户要导出 SiO2 数据，需先 list_material_index 得到 path_keys，再 export_nk_to_csv。
-   {"tool": "export_nk_to_csv", "arguments": {"path_keys": "oghma_database > materials > oxides > SiO2 > nk > Malitson.yml", "out_path": "/path/to/out.csv"}}
+   {"tool": "export_nk_to_csv", "arguments": {"path_keys": "og > materials > oxides > SiO2 > nk > Malitson.yml", "out_path": "/path/to/out.csv"}}
 3. 若不再需要调用工具、要直接回答用户：输出包含 "answer" 或 "text" 的 JSON。**只有在工具已返回成功后再声称文件已导出。** 例如：
    {"answer": "TiO2 的数据已成功为您导出至 2.csv。"}
 
 Few-shot 示例（请模仿）：
 User: 导出 TiO2 的数据到 2.csv
-Assistant: {"tool": "export_nk_to_csv", "arguments": {"path_keys": "refractive_index_info_database > materials > refractive_index_info > main > TiO2 > nk > Malitson.yml", "out_path": "2.csv"}}
+Assistant: {"tool": "export_nk_to_csv", "arguments": {"path_keys": "rii > materials > main > TiO2 > TiO2_Jolivet-anatase.yml", "out_path": "2.csv"}}
 User: 工具执行结果：{"success": true, "path": "/abs/2.csv", "rows": 100}
 Assistant: {"answer": "TiO2 的数据已成功为您导出至 2.csv。"}
 

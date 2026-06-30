@@ -15,27 +15,31 @@ render_page(
     context=PageContext(
         get_materials_db=your_get_materials_callable,
         preset_catalog=your_preset_catalog,
-        sim_wl_from=0.38,
-        sim_wl_to=0.78,
+        template_by_id=your_template_map,
+        recommended_wl_from=0.38,
+        recommended_wl_to=0.78,
+        initial_preset_id=your_default_preset_id,
+        initial_formula=your_initial_formula,
         tokens_path=Path("path/to/design_tokens.css"),
     ),
     materials_db=your_materials_dict,
 )
 ```
 
-`materials_db` maps names to `simulation.database_material` objects.
+`materials_db` maps names to `simulation.material_s` objects.
 
 `tokens_path` is required. The package reads it once per rerun and injects tokens into the page shell and the bundled `panel_section_head` component iframe. When copying into another project, provide your own `design_tokens.css` (see `ui/design_tokens.css` in simulation_toykits for reference).
 
-This package does **not** import host modules (`pages/`, `core/`). Runtime loads artifacts via `SIMULATION_ARTIFACTS_DIR` (`simulation.so` + `py_core_plugins/` + `simulation_plugins/`). Wire workspace/materials and UI assets from the app layer.
+This package does **not** import host modules (`pages/`, `core/`). Runtime loads Python plugins via `PYTHONPATH` and native artifacts via `SIMULATION_ARTIFACTS_DIR` (`simulation.so` + `py_core_plugins/` + `simulation_plugins/`). Wire workspace/materials and UI assets from the app layer.
 
 ## Module layout
 
 | File | Role |
 |------|------|
-| `page.py` | `PageContext` + `render_page()` — presets + three-section UI |
+| `page.py` | `render_page()` — 构建指令、参数区、结构图、n/k 曲线、2D 谱图与切片 |
+| `page_shell.py` | `PageContext` + bootstrap / session helpers |
 | `page_widgets.py` | Shared widgets and session helpers (ranges, preset formula, polarization) |
-| `presets.py` | Seven TMM-aligned presets + formula builder |
+| `presets.py` | Preset catalog types; formulas live in host `filmstack_templates.json` |
 | `simulation.py` | TMM primitives, 2D maps, 1D slices |
 | `sweep.py` | C++ batch wavelength/angle sweeps |
 | `plots.py` | Fixed-width matplotlib display |
@@ -51,7 +55,7 @@ Solver: `simulation_plugins/filmstack_optimization_utils.py` (import after `impo
 
 ## Deploy after editing simulation_core
 
-Streamlit reads `.simulation_core/py_core_plugins/` and `simulation_plugins/`, not the source tree. Re-run deploy or restart Streamlit after plugin edits.
+Streamlit reads `.simulation_toolkits/py_core_plugins/` and `simulation_plugins/`, not the source tree. Re-run deploy or restart Streamlit after plugin edits.
 
 ```bash
 python scripts/build_toykits.py local
@@ -61,7 +65,7 @@ python scripts/build_toykits.py local
 
 **Current wiring**
 
-- **simulation_toykits**：`app.py` 启动时预加载 `DEFAULT_MATERIAL_PATH_KEYS` + [`DEFAULT_SPECTRUM_PATH`](../toykits_config.py)（AM1.5G）；Simulation Database 页传入 `tokens_path=HOST_DESIGN_TOKENS_PATH`。
+- **simulation_toykits**：`app.py` 启动时预加载 `common.get_default_material_path_keys()` + [`DEFAULT_SPECTRUM_PATH`](../toykits_config.py)（AM1.5G）；Simulation Database 页传入 `tokens_path=HOST_DESIGN_TOKENS_PATH`。
 - **Standalone 宿主**：Simulation Database 页 `render_page(tokens_path=...)` 后工作区初始为空；Filmstack 预设所需材料须手动加入，或在下方示例中传入 `material_path_keys` / `spectrum_path_keys`。
 - Filmstack page → `common.render_filmstack_host()` → `get_workspace_materials()` + `PageContext.tokens_path`。
 
@@ -70,12 +74,13 @@ python scripts/build_toykits.py local
 ```python
 import simulation_database_parser as sdp
 from simulation_database.workspace import ensure_workspace_initialized
-from toykits_config import DEFAULT_MATERIAL_PATH_KEYS, DEFAULT_SPECTRUM_PATH
+from common import get_default_material_path_keys, HOST_DESIGN_TOKENS_PATH
+from toykits_config import DEFAULT_SPECTRUM_PATH
 
 sim_db = sdp.get_simulation_database(init=True)
 ensure_workspace_initialized(
     sim_db,
-    material_path_keys=DEFAULT_MATERIAL_PATH_KEYS,
+    material_path_keys=get_default_material_path_keys(),
     spectrum_path_keys=[DEFAULT_SPECTRUM_PATH],
 )
 ```
@@ -83,17 +88,30 @@ ensure_workspace_initialized(
 **Filmstack page glue** (simplified; see `common.render_filmstack_host`):
 
 ```python
-from common import HOST_DESIGN_TOKENS_PATH
-from simulation_database.workspace import ensure_sim_workspace_ui, get_workspace_materials
+from common import (
+    HOST_DESIGN_TOKENS_PATH,
+    build_filmstack_preset_catalog,
+    get_filmstack_template_by_id,
+)
+from simulation_database.workspace import get_workspace_materials
 from filmstack_simulation.page import PageContext, render_page
+from toykits_config import resolve_filmstack_initial_defaults
 
-ui = ensure_sim_workspace_ui()
+catalog = build_filmstack_preset_catalog()
+template_map = get_filmstack_template_by_id()
+initial = resolve_filmstack_initial_defaults(
+    catalog.valid_preset_ids,
+    template_by_id=template_map,
+)
 render_page(
     context=PageContext(
         get_materials_db=get_workspace_materials,
-        preset_catalog=your_preset_catalog,
-        sim_wl_from=ui.sim_wl_from,
-        sim_wl_to=ui.sim_wl_to,
+        preset_catalog=catalog,
+        template_by_id=template_map,
+        recommended_wl_from=initial.wl_from_um,
+        recommended_wl_to=initial.wl_to_um,
+        initial_preset_id=initial.preset_id,
+        initial_formula=initial.formula,
         tokens_path=HOST_DESIGN_TOKENS_PATH,
     ),
     materials_db=get_workspace_materials(),

@@ -9,12 +9,10 @@ from typing import Any, Iterable, Literal
 
 import streamlit as st
 
-import simulation_database_parser as sdp
-
+from simulation_database.database_precompiling import get_precompiled_leaf_object
 from simulation_database.database_ui import (
     intersect_wl_ranges,
     material_wl_range_um,
-    object_catalog_name,
     object_unique_name,
     path_id,
     spectrum_wl_range_um,
@@ -24,16 +22,17 @@ LeafKind = Literal["material", "spectrum"]
 
 _logger = logging.getLogger(__name__)
 
-WORKSPACE_SCHEMA = 4
+WORKSPACE_SCHEMA = 5
 
 BROWSER_HELP_TEXT = (
-    "refractive_index_info 材料数据由 https://refractiveindex.info/ 基于 CC0 1.0 协议分享；"
-    "其它数据来自互联网，数据仅供参考。"
+    "双击选中材料加入工作区。\n"
+    "单击选中材料进行预览。\n"
+    "rii 数据由 https://refractiveindex.info/ 基于 CC0 1.0 协议分享。\n"
+    "数据均来自互联网搜集，未检验数据正确性，仅供参考。"
 )
 
 WORKSPACE_HELP_TEXT = (
-    "在左侧「资源浏览器」中双击 leaf 节点可加入工作区。\n"
-    "工作区数据供 Filmstack 等模块使用。"
+    "工作区数据用于后续模块仿真计算。"
 )
 
 RANGE_WARN_HELP_TEXT = (
@@ -48,13 +47,11 @@ class PresentedLeaf:
     obj: Any
     breadcrumb: str
     path_keys: list[str]
-    catalog_name: str
     unique_name: str
 
 
 @dataclass
 class MaterialEntry:
-    catalog_name: str
     unique_name: str
     obj: Any
     path_keys: list[str]
@@ -62,7 +59,6 @@ class MaterialEntry:
 
 @dataclass
 class SpectrumEntry:
-    catalog_name: str
     unique_name: str
     obj: Any
     breadcrumb: str
@@ -72,7 +68,7 @@ class SpectrumEntry:
 @dataclass
 class FocusEntry:
     kind: LeafKind
-    name: str
+    unique_name: str
 
 
 @dataclass
@@ -127,20 +123,18 @@ def add_spectrum_entry(
     obj: Any,
     path_keys: list[str],
     *,
-    catalog_name: str | None = None,
     unique_name: str | None = None,
     breadcrumb: str | None = None,
 ) -> str:
-    catalog = catalog_name or object_catalog_name(obj)
-    ws.spectra[catalog] = SpectrumEntry(
-        catalog_name=catalog,
-        unique_name=unique_name or object_unique_name(obj),
+    unique = unique_name or object_unique_name(obj)
+    ws.spectra[unique] = SpectrumEntry(
+        unique_name=unique,
         obj=obj,
-        breadcrumb=breadcrumb if breadcrumb is not None else catalog,
+        breadcrumb=breadcrumb if breadcrumb is not None else unique,
         path_keys=list(path_keys),
     )
-    ws.last_added_spectrum = catalog
-    return catalog
+    ws.last_added_spectrum = unique
+    return unique
 
 
 def add_material_entry(
@@ -148,25 +142,23 @@ def add_material_entry(
     obj: Any,
     path_keys: list[str],
     *,
-    catalog_name: str | None = None,
     unique_name: str | None = None,
 ) -> str:
-    catalog = catalog_name or object_catalog_name(obj)
-    ws.materials[catalog] = MaterialEntry(
-        catalog_name=catalog,
-        unique_name=unique_name or object_unique_name(obj),
+    unique = unique_name or object_unique_name(obj)
+    ws.materials[unique] = MaterialEntry(
+        unique_name=unique,
         obj=obj,
         path_keys=list(path_keys),
     )
-    ws.last_added_material = catalog
-    return catalog
+    ws.last_added_material = unique
+    return unique
 
 
 def _iter_workspace_entries(ws: SimWorkspace) -> Iterable[tuple[LeafKind, str, MaterialEntry | SpectrumEntry]]:
-    for catalog_name, entry in ws.spectra.items():
-        yield "spectrum", catalog_name, entry
-    for catalog_name, entry in ws.materials.items():
-        yield "material", catalog_name, entry
+    for unique_name, entry in ws.spectra.items():
+        yield "spectrum", unique_name, entry
+    for unique_name, entry in ws.materials.items():
+        yield "material", unique_name, entry
 
 
 def _entry_wl_range_um(kind: LeafKind, entry: MaterialEntry | SpectrumEntry) -> tuple[float, float] | None:
@@ -181,21 +173,43 @@ def load_default_workspace_entries(
     *,
     material_path_keys: list[list[str]] | None = None,
     spectrum_path_keys: list[list[str]] | None = None,
-) -> None:
+    strict: bool = False,
+    required_material_names: frozenset[str] | None = None,
+) -> list[str]:
+    """Load default workspace entries; return failed path_id strings."""
+    del sim_db  # kept for API compatibility with callers passing sim_db
+    failed: list[str] = []
     for path in spectrum_path_keys or []:
+        pid = path_id(path)
         try:
-            obj = sdp.read_at_query_path(sim_db, path)
+            obj = get_precompiled_leaf_object(path)
             add_spectrum_entry(ws, obj, path)
         except Exception as exc:
-            _logger.debug("failed to load default spectrum %s: %s", path, exc)
+            failed.append(pid)
+            _logger.warning("failed to load default spectrum %s: %s", pid, exc)
     for path in material_path_keys or []:
+        pid = path_id(path)
         try:
-            obj = sdp.read_at_query_path(sim_db, path)
+            obj = get_precompiled_leaf_object(path)
             add_material_entry(ws, obj, path)
         except Exception as exc:
-            _logger.debug("failed to load default material %s: %s", path, exc)
+            failed.append(pid)
+            _logger.warning("failed to load default material %s: %s", pid, exc)
     if ws.spectra:
-        ws.focus = FocusEntry(kind="spectrum", name=next(reversed(ws.spectra)))
+        ws.focus = FocusEntry(kind="spectrum", unique_name=next(reversed(ws.spectra)))
+
+    if required_material_names:
+        missing = required_material_names - set(ws.materials.keys())
+        if missing:
+            msg = f"missing required workspace materials: {sorted(missing)}"
+            if strict:
+                raise RuntimeError(msg)
+            _logger.warning(msg)
+            failed.extend(f"material:{name}" for name in sorted(missing))
+
+    if strict and failed:
+        raise RuntimeError(f"failed to load default workspace entries: {failed}")
+    return failed
 
 
 def ensure_workspace_initialized(
@@ -203,15 +217,20 @@ def ensure_workspace_initialized(
     *,
     material_path_keys: list[list[str]] | None = None,
     spectrum_path_keys: list[list[str]] | None = None,
+    strict: bool = False,
+    required_material_names: frozenset[str] | None = None,
 ) -> tuple[SimWorkspace, SimWorkspaceUI]:
     ws = ensure_sim_workspace()
     ui = ensure_sim_workspace_ui()
-    if not ui.defaults_loaded:
+    has_paths = bool(material_path_keys or spectrum_path_keys)
+    if not ui.defaults_loaded and has_paths:
         load_default_workspace_entries(
             sim_db,
             ws,
             material_path_keys=material_path_keys,
             spectrum_path_keys=spectrum_path_keys,
+            strict=strict,
+            required_material_names=required_material_names,
         )
         ui.defaults_loaded = True
         refresh_sim_wl_range(ws, ui, force=True)
@@ -219,7 +238,7 @@ def ensure_workspace_initialized(
 
 
 def get_workspace_materials() -> dict[str, Any]:
-    return {name: entry.obj for name, entry in ensure_sim_workspace().materials.items()}
+    return {unique_name: entry.obj for unique_name, entry in ensure_sim_workspace().materials.items()}
 
 
 def reset_workspace() -> None:
@@ -260,9 +279,9 @@ def workspace_range_warnings(ws: SimWorkspace, ui: SimWorkspaceUI) -> dict[str, 
     if not ui.sim_wl_user_set:
         return {}
     warnings: dict[str, bool] = {}
-    for kind, catalog_name, entry in _iter_workspace_entries(ws):
+    for kind, unique_name, entry in _iter_workspace_entries(ws):
         data_range = _entry_wl_range_um(kind, entry)
-        warnings[f"{kind}:{catalog_name}"] = not wl_range_covers_data(
+        warnings[f"{kind}:{unique_name}"] = not wl_range_covers_data(
             data_range, ui.sim_wl_from, ui.sim_wl_to
         )
     return warnings
@@ -272,13 +291,11 @@ def workspace_to_panel_dict(ws: SimWorkspace, warnings: dict[str, bool] | None =
     warnings = warnings or {}
     spectra = []
     materials = []
-    for kind, catalog_name, entry in _iter_workspace_entries(ws):
+    for kind, unique_name, entry in _iter_workspace_entries(ws):
         item = {
-            "catalog_name": catalog_name,
-            "unique_name": entry.unique_name,
-            "name": catalog_name,
+            "unique_name": unique_name,
             "node_path": path_id(entry.path_keys),
-            "warn": warnings.get(f"{kind}:{catalog_name}", False),
+            "warn": warnings.get(f"{kind}:{unique_name}", False),
         }
         if kind == "spectrum":
             spectra.append(item)
@@ -286,14 +303,12 @@ def workspace_to_panel_dict(ws: SimWorkspace, warnings: dict[str, bool] | None =
             materials.append(item)
     focus = None
     if ws.focus is not None:
-        focus = {"kind": ws.focus.kind, "name": ws.focus.name}
+        focus = {"kind": ws.focus.kind, "unique_name": ws.focus.unique_name}
     preview = None
     if ws.preview is not None:
         preview = {
             "kind": ws.preview.kind,
-            "catalog_name": ws.preview.catalog_name,
             "unique_name": ws.preview.unique_name,
-            "name": ws.preview.catalog_name,
             "breadcrumb": ws.preview.breadcrumb,
         }
     return {

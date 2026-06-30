@@ -15,9 +15,9 @@ def _material_label(material: Any) -> str:
 
 
 def _formula_material_token(material: Any) -> str:
-    catalog_fn = getattr(material, "catalog_name", None)
-    if callable(catalog_fn):
-        return str(catalog_fn())
+    unique_fn = getattr(material, "unique_name", None)
+    if callable(unique_fn):
+        return str(unique_fn())
     return _material_label(material)
 
 

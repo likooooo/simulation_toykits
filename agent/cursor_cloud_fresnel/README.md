@@ -11,7 +11,7 @@
 5. Cloud Agent 根据 `TOOL_RESULT` 继续推理，再输出下一个 `TOOL_CALL` 或最终 `ANSWER: ...`。
 6. Runner 收到 `ANSWER` 后打印并退出。
 
-因此：**大脑在 Cursor 云端，工具执行在你本机**（需要 simulation.so、材料库等），与本地 agent 使用同一套工具。
+因此：**大脑在 Cursor 云端，工具执行在你本机**（需要 simulation.so 等），与本地 agent 使用同一套工具。
 
 ## 环境要求
 
@@ -19,11 +19,11 @@
 2. **Python 依赖（requirements.txt）**：本 Agent 调用的工具依赖 `simulation.so`、`filmstack_visualizer` 与 `simulation_database_parser`。**须先按仓库根目录的 `requirements.txt` 初始化运行环境**，例如：`pip install -r requirements.txt`，并 `python scripts/build_toykits.py` + `source scripts/init-toykits-build-env.sh`。否则 Runner 在执行 TOOL_CALL 时会因缺少依赖或 simulation 加载失败而报错。
 3. **Cursor API Key**：在 [Cursor Dashboard → Integrations](https://cursor.com/dashboard?tab=integrations) 创建；设置环境变量 `CURSOR_API_KEY`。
 4. **GitHub 仓库**：Cloud Agents **只能使用「已在 Cursor 中关联」的仓库**（不是任意公开仓库即可）。请用 Cursor 打开该仓库、或在 [cursor.com](https://cursor.com) 设置中连接 GitHub 并授权该仓库；否则会报 `Failed to verify existence of branch 'main'`。创建 Agent 时传 `--repository`（该仓库的 clone URL）。可先运行 `--list-repos` 查看当前可用的仓库列表。
-5. **simulation.so、材料库**：与本地 [fresnel_caculator](../fresnel_caculator) 相同，需在运行 Runner 的机器上准备好（`source scripts/init-toykits-build-env.sh` 后 `.simulation_core/simulation.so` 与 `SIMULATION_DATABASE_DIR` 指向的 release 树）。
+5. **simulation.so**：与本地 [fresnel_caculator](../fresnel_caculator) 相同，需在运行 Runner 的机器上准备好（`source scripts/init-toykits-build-env.sh` 后 `.simulation_toolkits/simulation.so`）。
 
 ## 使用方式
 
-**必须从仓库根目录运行**（以便加载 `simulation.so` 与材料库）：
+**必须从仓库根目录运行**（以便加载 `simulation.so`）：
 
 ```bash
 cd /path/to/simulation_toykits

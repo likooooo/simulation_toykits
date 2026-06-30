@@ -23,16 +23,8 @@ scripts
 .dockerignore
 Dockerfile.hugging_face
 
-# simulation_core：仅保留 database 与 infrastructure/requirements.txt
-simulation_core/build
-simulation_core/tests
-simulation_core/src
-simulation_core/scripts
-simulation_core/3rdparty
-!simulation_core/3rdparty/infrastructure/requirements.txt
-simulation_core/assets/*
-!simulation_core/assets/database/**
+simulation_core
 
-# .simulation_core 默认排除后显式纳入
-.simulation_core
-!.simulation_core/**
+# .simulation_toolkits 默认排除后显式纳入
+.simulation_toolkits
+!.simulation_toolkits/**

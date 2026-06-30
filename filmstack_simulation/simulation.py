@@ -10,6 +10,9 @@ import filmstack_visualizer
 import simulation
 import tmm_utils
 
+DEFAULT_N_WL = 50
+DEFAULT_N_ANG = 50
+
 
 def _cplx(z) -> complex:
     return tmm_utils.cplx_from_py(z)
@@ -122,8 +125,8 @@ def compute_spectral_map_2d(
     ang_from: float,
     ang_to: float,
     *,
-    n_wl: int = 50,
-    n_ang: int = 50,
+    n_wl: int = DEFAULT_N_WL,
+    n_ang: int = DEFAULT_N_ANG,
     layers: Sequence[Any] | None = None,
     polarization: str = "UNPOLARIZED",
 ) -> Dict[str, Any]:
@@ -191,7 +194,7 @@ def compute_polarized_curve_at_wavelength(
     ang_from: float,
     ang_to: float,
     *,
-    n_ang: int = 50,
+    n_ang: int = DEFAULT_N_ANG,
     layers: Sequence[Any] | None = None,
     polarization: str = "UNPOLARIZED",
 ) -> Dict[str, Any]:
@@ -215,7 +218,7 @@ def compute_polarized_curve_at_angle(
     wl_from: float,
     wl_to: float,
     *,
-    n_wl: int = 50,
+    n_wl: int = DEFAULT_N_WL,
     layers: Sequence[Any] | None = None,
     polarization: str = "UNPOLARIZED",
 ) -> Dict[str, Any]:

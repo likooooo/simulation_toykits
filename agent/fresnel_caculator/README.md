@@ -11,9 +11,8 @@
 ## 环境
 
 1. Python 3.10+（与主仓库一致）
-2. Ollama + 支持工具调用的模型（默认 `qwen2.5:7b`）；Docker 部署见 [docker/README.md](docker/README.md)
-3. `.simulation_core/simulation.so`（`python scripts/build_toykits.py`）；pytest 显式 `LD_LIBRARY_PATH=.simulation_core`
-4. 材料库：collect 后 `SIMULATION_DATABASE_DIR` 指向 `.simulation_core/assets/database`（`source scripts/init-toykits-build-env.sh`）；构建前源码树在 `simulation_core/assets/database`
+2. Ollama + 支持工具调用的模型（默认 `qwen3.5:9b`）；Docker 部署见 [docker/README.md](docker/README.md)
+3. `.simulation_toolkits/simulation.so`（`python scripts/build_toykits.py`）；pytest 须 `source scripts/init-toykits-build-env.sh`
 
 ## 使用
 
@@ -28,7 +27,7 @@ cd /path/to/simulation_toykits
 python -m agent.fresnel_caculator.run_agent "请计算 air 0 SiO2 0.1 air 0 在 532nm、0 度下的 R 和 T"
 
 # 指定输出目录与模型（设计波长 532 nm = 0.532 μm）
-python -m agent.fresnel_caculator.run_agent "设计一个 532nm 高反膜，R>99%" -o ./out -m qwen2.5:7b
+python -m agent.fresnel_caculator.run_agent "设计一个 532nm 高反膜，R>99%" -o ./out -m qwen3.5:9b
 
 # 迭代设计
 python -m agent.fresnel_caculator.run_agent "迭代设计 532nm 高反膜，R>99%，最多 10 轮" -o ./out
@@ -40,7 +39,7 @@ echo "导出 SiO2 nk 到 out/sio2_nk.csv" | python -m agent.fresnel_caculator.ru
 | 参数 | 说明 |
 |------|------|
 | `-o` / `--output-dir` | 输出目录，默认 `./fresnel_agent_output` |
-| `-m` / `--model` | Ollama 模型，默认 `qwen2.5:7b` |
+| `-m` / `--model` | Ollama 模型，默认 `qwen3.5:9b` |
 | `--base-url` | Ollama 地址，默认 `http://localhost:11434` |
 | `--max-turns` | 最大工具轮数，默认 20 |
 | `-v` / `--verbose` | 打印每轮模型与工具结果 |

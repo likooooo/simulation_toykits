@@ -2,9 +2,11 @@ env
 .venv
 .pytest_cache
 .cursor
-.streamlit
+.streamlit/secrets.toml
 dist
+static
 __pycache__
-.simulation_core
+.simulation_toolkits
+.ci
 /py_core_plugins
 nightly_job.txt

@@ -12,24 +12,100 @@ from filmstack_simulation.help_texts import (
     POLARIZATION_STALE_INFO,
     PRESET_STALE_INFO,
 )
-from filmstack_simulation.presets import CUSTOM_PRESET_ID, PresetCatalog, build_formula_for_preset, get_wl_mid_um
+from filmstack_simulation.presets import CUSTOM_PRESET_ID, PresetCatalog, build_formula_for_preset
+from filmstack_simulation.template_types import (
+    FilmstackSimParams,
+    FilmstackTemplate,
+    FilmstackUIDefaults,
+    FilmstackUIApplySpec,
+)
 
 FILMSTACK_TOKENS_CSS_KEY = "_filmstack_tokens_css"
 
 POLARIZATION_IDS = ("TE", "TM", "UNPOLARIZED")
 POLARIZATION_LABELS = {"TE": "TE", "TM": "TM", "UNPOLARIZED": "Unpolarized"}
 DEFAULT_POLARIZATION = "UNPOLARIZED"
+DEFAULT_ANG_FROM = 0.0
+DEFAULT_ANG_TO = 60.0
+DEFAULT_TARGET_WL = 0.55
+DEFAULT_TARGET_ANG = 0.0
+DEFAULT_FIXED_ANGLE = 0.0
 
-# Param stack row count (sim page: 5 rows; opt page adds spacer to match).
-PARAM_STACK_ROW_COUNT = 5
+SIM_UI_APPLY = FilmstackUIApplySpec(
+    wl_from_key="fs_sim_wl_from",
+    wl_to_key="fs_sim_wl_to",
+    polarization_key="fs_sim_polarization",
+    ang_from_key="fs_sim_ang_from",
+    ang_to_key="fs_sim_ang_to",
+    target_wl_key="fs_sim_target_wl",
+    target_ang_key="fs_sim_target_ang",
+)
+
+OPT_UI_APPLY = FilmstackUIApplySpec(
+    wl_from_key="fs_opt_wl_from",
+    wl_to_key="fs_opt_wl_to",
+    polarization_key="fs_opt_polarization",
+    fixed_angle_key="fs_opt_angle",
+)
+
+
+def filmstack_ui_defaults(
+    *,
+    wl_from: float,
+    wl_to: float,
+    formula: str = "",
+    mode: Literal["sim", "opt"] = "sim",
+) -> FilmstackUIDefaults:
+    if mode == "opt":
+        return FilmstackUIDefaults(
+            wl_from=wl_from,
+            wl_to=wl_to,
+            polarization=DEFAULT_POLARIZATION,
+            fixed_angle=DEFAULT_FIXED_ANGLE,
+            formula=formula,
+        )
+    return FilmstackUIDefaults(
+        wl_from=wl_from,
+        wl_to=wl_to,
+        polarization=DEFAULT_POLARIZATION,
+        ang_from=DEFAULT_ANG_FROM,
+        ang_to=DEFAULT_ANG_TO,
+        target_wl=DEFAULT_TARGET_WL,
+        target_ang=DEFAULT_TARGET_ANG,
+        formula=formula,
+    )
+
+
+def sim_ui_defaults(*, wl_from: float, wl_to: float, formula: str = "") -> FilmstackUIDefaults:
+    return filmstack_ui_defaults(wl_from=wl_from, wl_to=wl_to, formula=formula, mode="sim")
+
+
+def opt_ui_defaults(*, wl_from: float, wl_to: float, formula: str = "") -> FilmstackUIDefaults:
+    return filmstack_ui_defaults(wl_from=wl_from, wl_to=wl_to, formula=formula, mode="opt")
+
 # Left formula text area height (px); fixed to align with param stack visually.
-FORMULA_STACK_HEIGHT_PX = 300
-_PARAM_ROW_COLS = [1.15, 1, 1]
+SIM_FORMULA_STACK_HEIGHT_PX = 350
+OPT_FORMULA_STACK_HEIGHT_PX = 240
+# Outer row: label | controls = 1:2. Dual controls nest 1:1 inside the controls column.
+_LABEL_CONTROL_COLS = [1, 2]
+_DUAL_CONTROL_COLS = [1, 1]
+PRESET_SELECT_LABEL = "膜系配置"
 
 
 def _format_float(value: float, fmt: str) -> str:
     """Printf-style formatting matching ``st.number_input(format=...)``."""
     return fmt % float(value)
+
+
+def _panel_head_columns(label: str, *, css_prefix: str):
+    """Return controls column after rendering a panel-head label."""
+    title, c_controls = st.columns(_LABEL_CONTROL_COLS, gap="small")
+    with title:
+        st.markdown(
+            f'<div class="{css_prefix}-panel-head">{label}</div>',
+            unsafe_allow_html=True,
+        )
+    return c_controls
 
 
 def _migrate_numeric_session_value(*, key: str, fmt: str) -> None:
@@ -95,6 +171,7 @@ def panel_head(
     css_prefix: str,
     help_text: str | None = None,
     help_url: str | None = None,
+    help_url_label: str = "— 使用说明",
     align: Literal["left", "right"] = "left",
     key: str | None = None,
 ) -> None:
@@ -102,6 +179,7 @@ def panel_head(
         label,
         help_text=help_text,
         help_url=help_url,
+        help_url_label=help_url_label,
         align=align,
         key=key,
         css_prefix=css_prefix,
@@ -119,26 +197,23 @@ def range_inputs(
     default_to: float,
     fmt: str,
 ) -> tuple[float, float]:
-    title, c_from, c_to = st.columns(_PARAM_ROW_COLS, gap="small")
-    with title:
-        st.markdown(
-            f'<div class="{css_prefix}-panel-head">{label}</div>',
-            unsafe_allow_html=True,
-        )
-    with c_from:
-        val_from = _float_text_input(
-            "from",
-            key=key_from,
-            default=default_from,
-            fmt=fmt,
-        )
-    with c_to:
-        val_to = _float_text_input(
-            "to",
-            key=key_to,
-            default=default_to,
-            fmt=fmt,
-        )
+    c_controls = _panel_head_columns(label, css_prefix=css_prefix)
+    with c_controls:
+        c_from, c_to = st.columns(_DUAL_CONTROL_COLS, gap="small")
+        with c_from:
+            val_from = _float_text_input(
+                "from",
+                key=key_from,
+                default=default_from,
+                fmt=fmt,
+            )
+        with c_to:
+            val_to = _float_text_input(
+                "to",
+                key=key_to,
+                default=default_to,
+                fmt=fmt,
+            )
     return val_from, val_to
 
 
@@ -153,53 +228,24 @@ def target_wl_ang_inputs(
     wl_fmt: str,
     ang_fmt: str,
 ) -> tuple[float, float]:
-    title, c_wl, c_ang = st.columns(_PARAM_ROW_COLS, gap="small")
-    with title:
-        st.markdown(
-            f'<div class="{css_prefix}-panel-head">{label}</div>',
-            unsafe_allow_html=True,
-        )
-    with c_wl:
-        target_wl = _float_text_input(
-            "target_wl",
-            key=wl_key,
-            default=wl_default,
-            fmt=wl_fmt,
-        )
-    with c_ang:
-        target_ang = _float_text_input(
-            "target_ang",
-            key=ang_key,
-            default=ang_default,
-            fmt=ang_fmt,
-        )
+    c_controls = _panel_head_columns(label, css_prefix=css_prefix)
+    with c_controls:
+        c_wl, c_ang = st.columns(_DUAL_CONTROL_COLS, gap="small")
+        with c_wl:
+            target_wl = _float_text_input(
+                "target_wl",
+                key=wl_key,
+                default=wl_default,
+                fmt=wl_fmt,
+            )
+        with c_ang:
+            target_ang = _float_text_input(
+                "target_ang",
+                key=ang_key,
+                default=ang_default,
+                fmt=ang_fmt,
+            )
     return target_wl, target_ang
-
-
-def single_input_row(
-    label: str,
-    *,
-    css_prefix: str,
-    key: str,
-    default: float,
-    fmt: str,
-) -> float:
-    title, c_val, c_extra = st.columns(_PARAM_ROW_COLS, gap="small")
-    with title:
-        st.markdown(
-            f'<div class="{css_prefix}-panel-head">{label}</div>',
-            unsafe_allow_html=True,
-        )
-    with c_val:
-        value = _float_text_input(
-            label,
-            key=key,
-            default=default,
-            fmt=fmt,
-        )
-    with c_extra:
-        st.empty()
-    return value
 
 
 def polarization_select(
@@ -225,35 +271,33 @@ def params_stack_spacer(*, css_prefix: str) -> None:
         f'<div class="{css_prefix}-params-spacer-marker"></div>',
         unsafe_allow_html=True,
     )
-    title, c_from, c_to = st.columns(_PARAM_ROW_COLS, gap="small")
+    title, c_controls = st.columns(_LABEL_CONTROL_COLS, gap="small")
     with title:
         st.empty()
-    with c_from:
-        st.empty()
-    with c_to:
-        st.empty()
+    with c_controls:
+        c_from, c_to = st.columns(_DUAL_CONTROL_COLS, gap="small")
+        with c_from:
+            st.empty()
+        with c_to:
+            st.empty()
 
 
-def preset_polarization_row(
+def preset_select_row(
     *,
     preset_options: Sequence[Any],
     preset_format_func: Callable[[Any], str],
     preset_key: str,
     preset_on_change: Callable[[], None] | None,
-    polarization_key: str,
-    polarization_on_change: Callable[[], None] | None = None,
     css_prefix: str,
-) -> str:
+) -> None:
     st.markdown(
-        f'<div class="{css_prefix}-preset-pol-row-marker"></div>',
+        f'<div class="{css_prefix}-preset-row-marker"></div>',
         unsafe_allow_html=True,
     )
-    c_title, c_preset, c_pol = st.columns(_PARAM_ROW_COLS, gap="small")
-    with c_title:
-        st.empty()
+    c_preset = _panel_head_columns(PRESET_SELECT_LABEL, css_prefix=css_prefix)
     with c_preset:
         preset_kwargs: dict[str, Any] = {
-            "label": "预设膜系",
+            "label": PRESET_SELECT_LABEL,
             "options": preset_options,
             "format_func": preset_format_func,
             "key": preset_key,
@@ -262,6 +306,19 @@ def preset_polarization_row(
         if preset_on_change is not None:
             preset_kwargs["on_change"] = preset_on_change
         st.selectbox(**preset_kwargs)
+
+
+def polarization_row(
+    *,
+    polarization_key: str,
+    polarization_on_change: Callable[[], None] | None = None,
+    css_prefix: str,
+) -> str:
+    st.markdown(
+        f'<div class="{css_prefix}-pol-row-marker"></div>',
+        unsafe_allow_html=True,
+    )
+    c_pol = _panel_head_columns("偏振", css_prefix=css_prefix)
     with c_pol:
         return polarization_select(
             key=polarization_key,
@@ -269,24 +326,111 @@ def preset_polarization_row(
         )
 
 
-def set_preset_formula(
+def angle_polarization_inputs(
+    label: str,
+    *,
+    css_prefix: str,
+    angle_key: str,
+    angle_default: float,
+    angle_fmt: str,
+    polarization_key: str,
+    polarization_on_change: Callable[[], None] | None = None,
+) -> tuple[float, str]:
+    c_controls = _panel_head_columns(label, css_prefix=css_prefix)
+    with c_controls:
+        c_angle, c_pol = st.columns(_DUAL_CONTROL_COLS, gap="small")
+        with c_angle:
+            angle = _float_text_input(
+                label,
+                key=angle_key,
+                default=angle_default,
+                fmt=angle_fmt,
+            )
+        with c_pol:
+            polarization = polarization_select(
+                key=polarization_key,
+                on_change=polarization_on_change,
+            )
+    return angle, polarization
+
+
+def _apply_sim_param(
+    key: str | None,
+    value: float | str | None,
+    *,
+    default: float | str,
+    fmt: str | None = None,
+) -> None:
+    if key is None:
+        return
+    effective = value if value is not None else default
+    if fmt is not None and isinstance(effective, (int, float)):
+        st.session_state[key] = _format_float(float(effective), fmt)
+    else:
+        st.session_state[key] = effective
+
+
+def init_page_ui_from_template(
+    *,
+    initial_preset_id: str,
+    template: FilmstackTemplate | None,
+    ui: FilmstackUIApplySpec,
+    defaults: FilmstackUIDefaults,
+) -> None:
+    """Apply template sim to session before first widget render."""
+    init_key = f"{ui.wl_from_key}__ui_inited_{initial_preset_id}"
+    if st.session_state.get(init_key):
+        return
+    if initial_preset_id == CUSTOM_PRESET_ID:
+        sim = FilmstackSimParams()
+    else:
+        sim = template.sim if template is not None else FilmstackSimParams()
+    _apply_ui_params(ui, sim, defaults)
+    st.session_state[init_key] = True
+
+
+def _apply_ui_params(
+    ui: FilmstackUIApplySpec,
+    sim: FilmstackSimParams,
+    defaults: FilmstackUIDefaults,
+) -> None:
+    _apply_sim_param(ui.wl_from_key, sim.wl_from_um, default=defaults.wl_from, fmt="%.4f")
+    _apply_sim_param(ui.wl_to_key, sim.wl_to_um, default=defaults.wl_to, fmt="%.4f")
+    _apply_sim_param(ui.ang_from_key, sim.ang_from_deg, default=defaults.ang_from, fmt="%.2f")
+    _apply_sim_param(ui.ang_to_key, sim.ang_to_deg, default=defaults.ang_to, fmt="%.2f")
+    _apply_sim_param(ui.target_wl_key, sim.target_wl_um, default=defaults.target_wl, fmt="%.4f")
+    _apply_sim_param(ui.target_ang_key, sim.target_ang_deg, default=defaults.target_ang, fmt="%.2f")
+    if ui.fixed_angle_key is not None:
+        angle = sim.target_ang_deg
+        if angle is None:
+            angle = sim.ang_from_deg
+        _apply_sim_param(ui.fixed_angle_key, angle, default=defaults.fixed_angle, fmt="%.2f")
+    _apply_sim_param(ui.polarization_key, sim.polarization, default=defaults.polarization)
+
+
+def apply_preset_template(
+    template: FilmstackTemplate | None,
     preset_id: str,
-    materials_db: Dict[str, Any],
     catalog: PresetCatalog,
     *,
     formula_key: str,
     preset_key: str,
-    sim_wl_from: float | None = None,
-    sim_wl_to: float | None = None,
+    ui: FilmstackUIApplySpec,
+    defaults: FilmstackUIDefaults,
 ) -> None:
     if preset_id == CUSTOM_PRESET_ID:
+        _apply_ui_params(ui, FilmstackSimParams(), defaults)
         st.session_state[preset_key] = CUSTOM_PRESET_ID
         return
-    wl_mid = get_wl_mid_um(sim_wl_from, sim_wl_to)
-    st.session_state[formula_key] = build_formula_for_preset(
-        preset_id, catalog, materials_db, wl_mid
+
+    st.session_state[formula_key] = (
+        template.preset.formula if template is not None
+        else build_formula_for_preset(preset_id, catalog)
     )
     st.session_state[preset_key] = preset_id
+
+    sim = template.sim if template is not None else FilmstackSimParams()
+    _apply_ui_params(ui, sim, defaults)
 
 
 def resolve_stack_cached(
@@ -313,6 +457,8 @@ def on_preset_change(
     formula_key: str,
     page_context_key: str,
     preset_ids: tuple[str, ...],
+    ui: FilmstackUIApplySpec | None = None,
+    defaults_factory: Callable[[Any], FilmstackUIDefaults] | None = None,
 ) -> None:
     ctx = st.session_state.get(page_context_key)
     if ctx is None:
@@ -321,18 +467,47 @@ def on_preset_change(
     if not (0 <= idx < len(preset_ids)):
         return
     preset_id = preset_ids[idx]
-    st.session_state[preset_key] = preset_id
-    if preset_id == CUSTOM_PRESET_ID:
-        return
-    set_preset_formula(
-        preset_id,
-        ctx.get_materials_db(),
-        ctx.preset_catalog,
-        formula_key=formula_key,
-        preset_key=preset_key,
-        sim_wl_from=ctx.sim_wl_from,
-        sim_wl_to=ctx.sim_wl_to,
-    )
+    template = ctx.template_by_id.get(preset_id) if ui is not None else None
+    defaults = None
+    if ui is not None and defaults_factory is not None:
+        defaults = defaults_factory(ctx)
+        apply_preset_template(
+            template,
+            preset_id,
+            ctx.preset_catalog,
+            formula_key=formula_key,
+            preset_key=preset_key,
+            ui=ui,
+            defaults=defaults,
+        )
+
+
+def make_preset_change_handler(
+    *,
+    preset_changed_key: str,
+    page_context_key: str,
+    preset_select_key: str,
+    preset_key: str,
+    formula_key: str,
+    ui: FilmstackUIApplySpec,
+    defaults_factory: Callable[[Any], FilmstackUIDefaults],
+) -> Callable[[], None]:
+    def handler() -> None:
+        st.session_state[preset_changed_key] = True
+        ctx = st.session_state.get(page_context_key)
+        if ctx is None:
+            return
+        on_preset_change(
+            preset_select_key=preset_select_key,
+            preset_key=preset_key,
+            formula_key=formula_key,
+            page_context_key=page_context_key,
+            preset_ids=ctx.preset_catalog.preset_ids,
+            ui=ui,
+            defaults_factory=defaults_factory,
+        )
+
+    return handler
 
 
 def resolve_initial_formula(
@@ -340,18 +515,10 @@ def resolve_initial_formula(
     initial_preset_id: str,
     initial_formula: str,
     preset_catalog: PresetCatalog,
-    materials_db: Optional[Dict[str, Any]],
-    sim_wl_from: float | None = None,
-    sim_wl_to: float | None = None,
 ) -> str:
     if initial_preset_id == CUSTOM_PRESET_ID:
         return initial_formula
-    if materials_db:
-        wl_mid = get_wl_mid_um(sim_wl_from, sim_wl_to)
-        return build_formula_for_preset(
-            initial_preset_id, preset_catalog, materials_db, wl_mid
-        )
-    return ""
+    return build_formula_for_preset(initial_preset_id, preset_catalog)
 
 
 def init_preset_select(
@@ -373,8 +540,7 @@ def init_preset_select(
 def init_formula_default(
     *,
     formula_key: str,
-    materials_db: Optional[Dict[str, Any]],
     default_formula: str,
 ) -> None:
     if formula_key not in st.session_state:
-        st.session_state[formula_key] = default_formula if materials_db else ""
+        st.session_state[formula_key] = default_formula

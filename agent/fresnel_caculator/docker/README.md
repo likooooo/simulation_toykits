@@ -30,7 +30,7 @@ chmod +x pull_model.sh
 ./pull_model.sh
 ```
 
-默认拉取 `qwen2.5:7b`。如需更换模型，可复制 `.env.example` 为 `.env`，修改 `OLLAMA_MODEL` 后再次执行 `./pull_model.sh`。
+默认拉取 `qwen3.5:9b`。如需更换模型，可复制 `.env.example` 为 `.env`，修改 `OLLAMA_MODEL` 后再次执行 `./pull_model.sh`。
 
 **3. 运行智能体**
 

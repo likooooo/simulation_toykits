@@ -103,6 +103,13 @@ def _run_diffraction(
     return _parse_diffraction_stdout(proc.stdout or "")
 
 
+def _default_material_index(materials: list[str], preferred: tuple[str, ...] = ("air", "air_Ciddor")) -> int:
+    for name in preferred:
+        if name in materials:
+            return materials.index(name)
+    return 0
+
+
 def _diffraction_ray_label(prefix: str, m: int) -> str:
     if m == 0:
         return f"{prefix}0"
@@ -208,7 +215,7 @@ def _build_polar_diffraction_figure(
     ax.text(
         ann_r * ix,
         ann_r * iy,
-        "Incident",
+        "入射",
         color="#2ca02c",
         fontsize=10,
         ha="center",
@@ -216,11 +223,11 @@ def _build_polar_diffraction_figure(
         fontweight="bold",
     )
 
-    ax.plot([], [], color="#2ca02c", lw=2.2, label="Incident")
-    ax.plot([], [], color="#d62728", lw=1.25, label="Reflected")
-    ax.plot([], [], color="#1f77b4", lw=1.25, label="Transmitted")
+    ax.plot([], [], color="#2ca02c", lw=2.2, label="入射")
+    ax.plot([], [], color="#d62728", lw=1.25, label="反射")
+    ax.plot([], [], color="#1f77b4", lw=1.25, label="透射")
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.02), ncol=3, frameon=False)
-    ax.set_title("Diffraction diagram")
+    ax.set_title("衍射示意图")
     ax.set_xlim(-1.38, 1.38)
     ax.set_ylim(-1.38, 1.38)
     ax.axis("off")
@@ -229,14 +236,14 @@ def _build_polar_diffraction_figure(
 
 ensure_fresnel_session_state()
 
-st.set_page_config(page_title="Diffraction angle (grating orders)", layout="wide")
+st.set_page_config(page_title="衍射角（光栅级次）", layout="wide")
 st.header("衍射角计算器")
 
 exe_path = _diffraction_binary_path()
 if not exe_path.is_file():
     st.error(
         f"未找到 `test_diffraction` 可执行文件：{exe_path}\n"
-        "请编译 simulation 的 `test_diffraction` 目标，并将其复制到 `.simulation_core/`（与 `simulation.so` 同目录）。"
+        "请编译 simulation 的 `test_diffraction` 目标，并将其复制到 `.simulation_toolkits/`（与 `simulation.so` 同目录）。"
     )
     st.stop()
 
@@ -244,34 +251,35 @@ col_a, col_b = st.columns(2)
 with col_a:
     mats = get_available_materials()
     m1 = st.selectbox(
-        "入射材料",
+        "入射侧介质",
         options=mats,
-        index=mats.index("air") if "air" in mats else 0,
+        index=_default_material_index(mats),
         key="diffraction_mat1",
-        help="在仿真数据库中添加更多材料数据",
+        help="材料名称须与 Simulation Database 工作区一致；若无 air，将尝试 air_Ciddor。",
     )
     m2 = st.selectbox(
-        "出射材料",
+        "透射侧介质",
         options=mats,
         index=min(1, len(mats) - 1),
         key="diffraction_mat2",
+        help="材料名称须与 Simulation Database 工作区一致。",
     )
 with col_b:
     L_um = st.number_input(
-        "光栅周期 Grating period (µm)",
+        "光栅周期 (µm)",
         min_value=1e-9,
         value=float(st.session_state.get("diffraction_L_um", 5.0)),
         format="%.6f",
     )
     st.session_state["diffraction_L_um"] = L_um
     wl_um = st.number_input(
-        "波长 Wavelength (µm)",
+        "波长 (µm)",
         min_value=1e-9,
         value=float(st.session_state.get("wavelength", 0.532)),
         format="%.3f",
     )
     incident_deg = st.slider(
-        "入射角 Incident angle (°)",
+        "入射角 (°)",
         min_value=-89.0,
         max_value=89.0,
         value=float(st.session_state.get("diffraction_incident_deg", 0.0)),
@@ -286,17 +294,16 @@ n_to = float(np.real(nk2))
 
 with col_a:
     max_display_order = st.number_input(
-        "Maximum Shown Order",
+        "最大显示级次",
         value=int(st.session_state.get("diffraction_max_display_order", 3)),
         min_value=0,
         step=1,
-        help="一个朴实无华的低通滤波器, 例如设为 3 时，透射与反射均只显示 m ∈ [−3, +3] 且计算结果中存在的级次。",
+        help="一个朴实无华的低通滤波器，例如设为 3 时，透射与反射均只显示 m ∈ [−3, +3] 且计算结果中存在的级次。",
     )
 st.session_state["diffraction_max_display_order"] = max_display_order
 
 st.markdown(
-    f"**n (@ {wl_um} µm)** from `{m1}`(n={n_from:.3f})"
-    f" to `{m2}`(n={n_to:.6f})"
+    f"**折射率 n（@ {wl_um} µm）**：`{m1}` → `{m2}`（n={n_from:.3f} → {n_to:.6f}）"
 )
 
 errors = []
@@ -351,9 +358,9 @@ if data is not None:
                 parts.append(f"**{sign}{m}**: {ang:.6g}°")
             return "  \n".join(parts) if parts else "（无）"
 
-        st.markdown("###### Transmitted Orders")
+        st.markdown("###### 透射级次")
         st.markdown(format_order_row(t_show))
-        st.markdown("###### Reflected Orders")
+        st.markdown("###### 反射级次")
         st.markdown(format_order_row(r_show))
     with tc2:
         fig = _build_polar_diffraction_figure(incident_deg, t_show, r_show)

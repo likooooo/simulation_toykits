@@ -8,7 +8,7 @@ Fresnel 多层膜专家智能体入口脚本。
   # 从仓库根目录运行（以便加载 simulation.so）
   # 自然语言中的 532nm 对应工具 wl_um（微米）：532 nm = 0.532 μm
   python -m agent.fresnel_caculator.run_agent "请计算 air 0 SiO2 0.1 air 0 在 532nm、0 度下的 R 和 T"
-  python -m agent.fresnel_caculator.run_agent "设计一个 532nm 高反膜，R>99%" --output-dir ./out --model qwen2.5:7b
+  python -m agent.fresnel_caculator.run_agent "设计一个 532nm 高反膜，R>99%" --output-dir ./out --model qwen3.5:9b
 """
 
 import argparse

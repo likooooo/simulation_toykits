@@ -18,9 +18,15 @@ let contextTarget = null;
 let searchDebounce = null;
 let clickTimer = null;
 const CLICK_DELAY_MS = 180;
+const SEARCH_DEBOUNCE_MS = 50;
+const SEARCH_MAX_RESULTS = 80;
+const MIN_INVERTED_TOKEN_LEN = 2;
+const CATALOG_STORAGE_PREFIX = "sim_db_search_catalog:";
 let lastAddSentAt = 0;
 let lastFocusSentAt = 0;
 let suppressClickUntil = 0;
+let resyncRequestedFor = null;
+let searchCatalog = { entries: [], inverted: {} };
 
 const elPanel = document.getElementById("panel");
 const elBrowser = document.getElementById("panel-browser");
@@ -59,6 +65,142 @@ function bindHelpIcon(el, helpText) {
   el.onmouseleave = () => {
     elHelpTooltip.classList.add("hidden");
   };
+}
+
+function catalogStorageKey(fingerprint) {
+  return CATALOG_STORAGE_PREFIX + String(fingerprint || "");
+}
+
+function persistSearchCatalog(fingerprint) {
+  if (!fingerprint) return;
+  try {
+    sessionStorage.setItem(catalogStorageKey(fingerprint), JSON.stringify(searchCatalog));
+  } catch (_) {}
+}
+
+function restoreSearchCatalogFromStorage(fingerprint) {
+  if (!fingerprint) return false;
+  try {
+    const raw = sessionStorage.getItem(catalogStorageKey(fingerprint));
+    if (!raw) return false;
+    const cached = JSON.parse(raw);
+    if (!cached || !Array.isArray(cached.entries) || !cached.entries.length) return false;
+    searchCatalog = {
+      entries: cached.entries,
+      inverted: cached.inverted || {},
+    };
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function installSearchCatalog(catalog) {
+  if (!catalog) return;
+  const fingerprint = String(catalog.fingerprint || "");
+  if (Array.isArray(catalog.entries) && catalog.entries.length) {
+    searchCatalog = {
+      entries: catalog.entries,
+      inverted: catalog.inverted || {},
+    };
+    persistSearchCatalog(fingerprint);
+    resyncRequestedFor = null;
+    return;
+  }
+  if (restoreSearchCatalogFromStorage(fingerprint)) {
+    resyncRequestedFor = null;
+    return;
+  }
+  if (fingerprint && resyncRequestedFor !== fingerprint) {
+    resyncRequestedFor = fingerprint;
+    sendAction({ action: "resync_search_catalog" });
+  }
+}
+
+function tokenizeSearchText(text) {
+  const lower = String(text || "").toLowerCase();
+  const tokens = new Set();
+  for (const part of lower.split(/[^a-z0-9_]+/)) {
+    if (part.length >= MIN_INVERTED_TOKEN_LEN) tokens.add(part);
+  }
+  for (const part of lower.replace(/_/g, " ").replace(/\./g, " ").split(/[^a-z0-9]+/)) {
+    if (part.length >= MIN_INVERTED_TOKEN_LEN) tokens.add(part);
+  }
+  return [...tokens];
+}
+
+function candidateEntryIndices(query) {
+  const key = String(query || "").trim();
+  if (!key) return [];
+  const qLower = key.toLowerCase();
+  const entries = searchCatalog.entries;
+  if (!entries.length) return [];
+
+  let tokens = tokenizeSearchText(qLower);
+  if (!tokens.length && qLower.length >= MIN_INVERTED_TOKEN_LEN) {
+    tokens = [qLower];
+  }
+  if (!tokens.length) {
+    return entries.map((_, index) => index);
+  }
+
+  let candidateSet = null;
+  for (const token of tokens) {
+    const hits = searchCatalog.inverted[token];
+    if (!hits || !hits.length) return [];
+    const tokenSet = new Set(hits);
+    if (candidateSet === null) candidateSet = tokenSet;
+    else {
+      candidateSet = new Set([...candidateSet].filter((index) => tokenSet.has(index)));
+    }
+    if (!candidateSet.size) return [];
+  }
+  return candidateSet ? [...candidateSet].sort((a, b) => a - b) : entries.map((_, index) => index);
+}
+
+function searchLocal(query) {
+  const key = String(query || "").trim();
+  if (!key) return [];
+  const qLower = key.toLowerCase();
+  const entries = searchCatalog.entries;
+  if (!entries.length) return [];
+
+  const candidates = candidateEntryIndices(key);
+  const results = [];
+  for (const index of candidates) {
+    const row = entries[index];
+    if (!row) continue;
+    const pathKeys = row[0];
+    const pathId = row[1];
+    const leafType = row[2];
+    const label = row[3];
+    const hay = `${label} ${pathId}`.toLowerCase();
+    if (!hay.includes(qLower)) continue;
+    results.push({
+      path_keys: pathKeys,
+      path_id: pathId,
+      leaf_type: leafType,
+      label,
+    });
+    if (results.length >= SEARCH_MAX_RESULTS) break;
+  }
+  return results;
+}
+
+function currentSearchQuery() {
+  return elSearchInput.value.trim();
+}
+
+function updateSearchView() {
+  const query = currentSearchQuery();
+  const searchMode = Boolean(query);
+  elTree.classList.toggle("hidden", searchMode);
+  elSearchArea.classList.toggle("hidden", !searchMode);
+  if (searchMode) {
+    renderSearchResults(searchLocal(query));
+  } else {
+    renderTree();
+  }
 }
 
 function bindWorkspaceHelp(helpText) {
@@ -282,14 +424,14 @@ function bindSearchResultClick(div, r) {
   });
 }
 
-function renderSearchResults() {
+function renderSearchResults(results) {
   elSearchArea.innerHTML = "";
-  const results = lastArgs.search_results || [];
-  if (!results.length) {
+  const list = results || [];
+  if (!list.length) {
     elSearchArea.innerHTML = '<div class="empty-tree">无匹配结果</div>';
     return;
   }
-  results.forEach((r) => {
+  list.forEach((r) => {
     const div = document.createElement("div");
     div.className = "search-result";
     const badge = document.createElement("span");
@@ -331,17 +473,17 @@ function renderWorkspace() {
     specList.appendChild(empty);
   } else {
     spectra.forEach((s) => {
-      const catalogName = s.catalog_name || s.name;
+      const uniqueName = s.unique_name;
       const card = makeCard(
-        s.name || catalogName,
+        uniqueName,
         s.node_path || "",
         "spectrum",
         "spectrum",
-        catalogName,
+        uniqueName,
         Boolean(s.warn),
         rangeWarnText
       );
-      if (focus && focus.kind === "spectrum" && focus.name === catalogName) {
+      if (focus && focus.kind === "spectrum" && focus.unique_name === uniqueName) {
         card.classList.add("focused");
       }
       specList.appendChild(card);
@@ -365,17 +507,17 @@ function renderWorkspace() {
     list.appendChild(empty);
   } else {
     materials.forEach((m) => {
-      const catalogName = m.catalog_name || m.name;
+      const uniqueName = m.unique_name;
       const card = makeCard(
-        m.name || catalogName,
+        uniqueName,
         m.node_path || "",
         "material",
         "material",
-        catalogName,
+        uniqueName,
         Boolean(m.warn),
         rangeWarnText
       );
-      if (focus && focus.kind === "material" && focus.name === catalogName) {
+      if (focus && focus.kind === "material" && focus.unique_name === uniqueName) {
         card.classList.add("focused");
       }
       list.appendChild(card);
@@ -387,7 +529,7 @@ function renderWorkspace() {
   elWorkspace.appendChild(matSection);
 }
 
-function makeCard(catalogName, nodePath, cardClass, kind, itemName, warn, helpText) {
+function makeCard(displayName, nodePath, cardClass, kind, itemUniqueName, warn, helpText) {
   const card = document.createElement("div");
   card.className = "slot-card " + cardClass;
   if (warn) {
@@ -398,7 +540,7 @@ function makeCard(catalogName, nodePath, cardClass, kind, itemName, warn, helpTe
   body.className = "slot-body";
   const nameEl = document.createElement("div");
   nameEl.className = "slot-name";
-  nameEl.textContent = catalogName;
+  nameEl.textContent = displayName;
   const pathEl = document.createElement("div");
   pathEl.className = "slot-path";
   pathEl.textContent = nodePath || "";
@@ -415,7 +557,7 @@ function makeCard(catalogName, nodePath, cardClass, kind, itemName, warn, helpTe
     hideHelpTooltip();
     card.querySelector(".card-warn-tooltip")?.remove();
     card.classList.remove("warn-card");
-    sendAction({ action: "remove", kind, name: itemName });
+    sendAction({ action: "remove", kind, unique_name: itemUniqueName });
   });
 
   card.appendChild(body);
@@ -434,14 +576,14 @@ function makeCard(catalogName, nodePath, cardClass, kind, itemName, warn, helpTe
     ev.preventDefault();
     suppressClickUntil = Date.now() + 250;
     clearTimeout(clickTimer);
-    sendAction({ action: "focus", kind, name: itemName, download: true });
+    sendAction({ action: "focus", kind, unique_name: itemUniqueName });
   });
   card.addEventListener("click", (ev) => {
     if (ev.target.closest(".btn-remove")) return;
     if (Date.now() < suppressClickUntil) return;
     clearTimeout(clickTimer);
     clickTimer = setTimeout(() => {
-      sendAction({ action: "focus", kind, name: itemName });
+      sendAction({ action: "focus", kind, unique_name: itemUniqueName });
     }, CLICK_DELAY_MS);
   });
 
@@ -487,20 +629,13 @@ document.addEventListener("click", () => hideContextMenu());
 
 elSearchInput.addEventListener("input", () => {
   clearTimeout(searchDebounce);
-  const q = elSearchInput.value.trim();
-  searchDebounce = setTimeout(() => {
-    if (q) {
-      sendAction({ action: "search", query: q });
-    } else {
-      sendAction({ action: "clear_search" });
-    }
-  }, 300);
+  searchDebounce = setTimeout(updateSearchView, SEARCH_DEBOUNCE_MS);
 });
 
 elSearchInput.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") {
     elSearchInput.value = "";
-    sendAction({ action: "clear_search" });
+    updateSearchView();
   }
 });
 
@@ -525,19 +660,13 @@ function render(args) {
   applySection(args.section || "all");
   bindHelpIcon(elBrowserHelp, args.browser_help_text || "");
   elDownloadToggle.checked = Boolean(args.download_on_action);
-  if (args.search_query) {
+  installSearchCatalog(args.search_catalog || {});
+
+  if (document.activeElement !== elSearchInput && args.search_query) {
     elSearchInput.value = args.search_query;
   }
 
-  const searchMode = Boolean(args.search_mode);
-  elTree.classList.toggle("hidden", searchMode);
-  elSearchArea.classList.toggle("hidden", !searchMode);
-
-  if (searchMode) {
-    renderSearchResults();
-  } else {
-    renderTree();
-  }
+  updateSearchView();
   renderWorkspace();
 
   if (

@@ -41,13 +41,11 @@ class TestGetMaterialNk:
     def test_call_material_may_fail_without_db(self):
         out = run_tool("get_material_nk", {
             "path_keys": [
-                "refractive_index_info_database",
+                "rii",
                 "materials",
-                "refractive_index_info",
                 "main",
                 "SiO2",
-                "nk",
-                "Malitson.yml",
+                "SiO2_Malitson.yml",
             ],
         })
         assert isinstance(out, dict)

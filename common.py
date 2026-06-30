@@ -2,7 +2,7 @@
 
 import io
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, Iterable, List
 
 import streamlit as st
 
@@ -12,6 +12,15 @@ from simulation_database.workspace import ensure_sim_workspace, get_workspace_ma
 from filmstack_simulation.simulation import nk_at_wavelength as _material_nk_at_wavelength
 
 HOST_DESIGN_TOKENS_PATH = Path(__file__).resolve().parent / "ui" / "design_tokens.css"
+
+
+def show_markdown_file(file_path: str | Path) -> None:
+    path = Path(file_path)
+    if path.is_file():
+        content = path.read_text(encoding="utf-8")
+        st.markdown(content, unsafe_allow_html=True)
+    else:
+        st.error(f"找不到文件: {file_path}")
 
 
 def _lookup_nk_at_wavelength(materials_db: Dict[str, Any], name: str, wl_um: float) -> complex:
@@ -127,7 +136,7 @@ def get_available_materials() -> List[str]:
 def page_grid_init(key_prefix=""):
     """Render grid inputs, return (x_min, x_max, y_min, y_max, nx, ny)."""
     p = f"{key_prefix}_" if key_prefix else ""
-    st.caption("Grid parameters:")
+    st.caption("网格参数：")
     x_min = st.number_input("start x (µm)", value=-1.1, format="%.2f", key=f"{p}xmin")
     x_max = st.number_input("end   x (µm)", value=1.1, format="%.2f", key=f"{p}xmax")
     y_min = st.number_input("start y (µm)", value=-1.1, format="%.2f", key=f"{p}ymin")
@@ -139,16 +148,16 @@ def page_grid_init(key_prefix=""):
 
 def page_plane_wave_init(key_prefix="pw"):
     """Render plane wave params, return (wavelength, theta_deg, phi_deg)."""
-    st.caption("Beam parameters:")
+    st.caption("光束参数：")
     wavelength = st.number_input("Wavelength (µm)", value=0.11, format="%.4f", key=f"{key_prefix}_wl")
-    theta_deg = st.number_input("θ (deg)", min_value = -89.0, max_value = 89.0, value = 10.0, step = 0.1, key=f"{key_prefix}_theta")
-    phi_deg = st.number_input("φ (deg)", min_value = -180.0, max_value = 180.0, value = 30.0, step = 0.1, key=f"{key_prefix}_phi")
+    theta_deg = st.number_input("θ (deg)", min_value=-89.0, max_value=89.0, value=10.0, step=0.1, key=f"{key_prefix}_theta")
+    phi_deg = st.number_input("φ (deg)", min_value=-180.0, max_value=180.0, value=30.0, step=0.1, key=f"{key_prefix}_phi")
     return wavelength, theta_deg, phi_deg
 
 
 def page_z_ratio_wave_init(key_prefix="zr"):
     """Render z-ratio wave params, return (wavelength, z_ratio)."""
-    st.caption("Beam parameters:")
+    st.caption("光束参数：")
     wavelength = st.number_input("Wavelength (µm)", value=1.1, format="%.4f", key=f"{key_prefix}_wl")
     z_ratio = st.number_input("z ratio (z = z ratio × wavelength)", value=0.25, format="%.2f", key=f"{key_prefix}_zr")
     return wavelength, z_ratio
@@ -164,10 +173,10 @@ def page_spherical_wave_init(key_prefix="sw"):
 
 def page_flat_top_init(key_prefix="ft"):
     """Render flat-top params; return (mode, fraction, r, order, rx, ry, order_x, order_y)."""
-    st.caption("Beam parameters:")
+    st.caption("光束参数：")
     mode = st.radio("Mode", ["Circular", "Rectangular"], key=f"{key_prefix}_mode", horizontal=True)
     fraction = st.number_input(
-        "amplitude at radius", value=0.5, min_value=1e-6, max_value=1 - 1e-6, format="%.2f", key=f"{key_prefix}_frac"
+        "边缘幅度比", value=0.5, min_value=1e-6, max_value=1 - 1e-6, format="%.2f", key=f"{key_prefix}_frac"
     )
     if mode == "Circular":
         r = st.number_input("r (µm)", value=0.8, min_value=0.01, format="%.2f", key=f"{key_prefix}_r")
@@ -184,7 +193,7 @@ def page_flat_top_init(key_prefix="ft"):
 
 def page_hermite_gaussian_init(key_prefix="hg"):
     """Render Hermite-Gaussian params, return (wavelength, m, n, z, wx0, wy0)."""
-    st.caption("Beam parameters:")
+    st.caption("光束参数：")
     wavelength = st.number_input("Wavelength (µm)", value=0.5, format="%.4f", key=f"{key_prefix}_wl")
     z_ratio = st.number_input("z ratio (z = z ratio × wavelength)", value=0.25, format="%.2f", key=f"{key_prefix}_zr")
     wx0 = st.number_input("wx0 (µm)", value=1.0, min_value=0.01, format="%.2f", key=f"{key_prefix}_wx0")
@@ -196,7 +205,7 @@ def page_hermite_gaussian_init(key_prefix="hg"):
 
 def page_laguerre_gaussian_init(key_prefix="lg"):
     """Render Laguerre-Gaussian params, return (wavelength, p, l, z, w0)."""
-    st.caption("Beam parameters:")
+    st.caption("光束参数：")
     wavelength = st.number_input("Wavelength (µm)", value=0.5, format="%.4f", key=f"{key_prefix}_wl")
     z_ratio = st.number_input("z ratio (z = z ratio × wavelength)", value=0.25, format="%.2f", key=f"{key_prefix}_zr")
     w0 = st.number_input("w0 (µm)", value=1.0, min_value=0.01, format="%.2f", key=f"{key_prefix}_w0")
@@ -350,27 +359,134 @@ def get_laguerre_gaussian_params_from_session(key_prefix):
     )
 
 
+# 开发者可选：仅展示部分模板 id；None 表示展示 filmstack_templates.json 中全部条目。
+FILMSTACK_TEMPLATE_FILTER: frozenset[str] | None = None
+
+
+def get_filmstack_templates():
+    from template_config import load_all_templates
+
+    all_templates = load_all_templates()
+    if FILMSTACK_TEMPLATE_FILTER is None:
+        return all_templates
+    allowed = FILMSTACK_TEMPLATE_FILTER
+    return tuple(t for t in all_templates if t.preset.id in allowed)
+
+
+def build_filmstack_preset_catalog():
+    from template_config import build_preset_catalog, default_preset_id
+
+    templates = get_filmstack_templates()
+    if not templates:
+        raise ValueError("FILMSTACK_TEMPLATE_FILTER excluded all templates")
+    preset_id = default_preset_id()
+    valid_ids = {t.preset.id for t in templates}
+    if preset_id not in valid_ids:
+        preset_id = templates[0].preset.id
+    return build_preset_catalog(templates, default_preset_id=preset_id)
+
+
+def get_filmstack_template_by_id():
+    from template_config import template_by_id
+
+    return template_by_id(get_filmstack_templates())
+
+
+def get_default_material_path_keys() -> list[list[str]]:
+    import simulation_database_parser as sdp
+    from template_config import aggregate_material_path_keys
+
+    base: list[list[str]] = [
+        ["rii", "materials", "other", "mixed_gases", "air_Ciddor.yml"],
+        *list(sdp.DEFAULT_RII_FILMSTACK_MATERIAL_PATHS.values()),
+        ["rii", "materials", "specs", "schott", "optical", "N-BK7.yml"],
+        ["rii", "materials", "main", "MgF2", "MgF2_Dodge-o.yml"],
+        ["rii", "materials", "main", "TiO2", "TiO2_Jolivet-anatase.yml"],
+        ["og", "materials", "oxides", "ITO", "ito.yml"],
+        ["og", "materials", "small_molecules", "NPD.yml"],
+        ["og", "materials", "small_molecules", "Alq3.yml"],
+        ["og", "materials", "small_molecules", "TPBi.yml"],
+        ["rii", "materials", "main", "LiF.yml"],
+        ["og", "materials", "metal", "Al", "std.yml"],
+    ]
+    seen = {tuple(p) for p in base}
+    for path in aggregate_material_path_keys(get_filmstack_templates()):
+        key = tuple(path)
+        if key not in seen:
+            seen.add(key)
+            base.append(path)
+    return base
+
+
+def build_materials_db_from_path_keys(
+    path_keys_list: Iterable[list[str]],
+    *,
+    sim_db: Any | None = None,
+) -> Dict[str, Any]:
+    """Load ``material_s`` objects for the given database path keys."""
+    import simulation_database_parser as sdp
+    from simulation_database.database_precompiling import (
+        get_precompiled_leaf_object,
+        load_or_build_database_index,
+    )
+    from simulation_database.database_ui import object_unique_name
+
+    db = sim_db if sim_db is not None else sdp.get_simulation_database(init=True)
+    load_or_build_database_index(db)
+    out: Dict[str, Any] = {}
+    for path_keys in path_keys_list:
+        obj = get_precompiled_leaf_object(list(path_keys))
+        out[object_unique_name(obj)] = obj
+    return out
+
+
+def build_default_materials_db(*, sim_db: Any | None = None) -> Dict[str, Any]:
+    return build_materials_db_from_path_keys(get_default_material_path_keys(), sim_db=sim_db)
+
+
+def get_required_default_material_names() -> frozenset[str]:
+    from template_config import aggregate_required_material_names
+
+    legacy = frozenset(
+        {
+            "air_Ciddor",
+            "SiO2_Arosa",
+            "Ta2O5_Cheikh-amorphous-3.28-8-450",
+            "Si_Aspnes",
+            "N-BK7",
+            "MgF2_Dodge-o",
+            "TiO2_Jolivet-anatase",
+            "LiF",
+            "ito",
+            "NPD",
+            "Alq3",
+            "TPBi",
+            "std",
+        }
+    )
+    return legacy | aggregate_required_material_names(get_filmstack_templates())
+
+
 def render_filmstack_host(*, render_page, PageContext) -> None:
     """Shared bootstrap for filmstack simulation / optimization host pages."""
     from simulation_database.workspace import ensure_sim_workspace_ui, get_workspace_materials
     import streamlit as st
 
-    from toykits_config import (
-        FILMSTACK_PRESET_CATALOG,
-        resolve_filmstack_initial_defaults,
-    )
+    from toykits_config import resolve_filmstack_initial_defaults
 
-    ui = ensure_sim_workspace_ui()
+    ensure_sim_workspace_ui()
     materials_db = get_workspace_materials()
+    catalog = st.session_state.get("_filmstack_preset_catalog") or build_filmstack_preset_catalog()
+    template_map = st.session_state.get("_filmstack_template_by_id") or get_filmstack_template_by_id()
     initial = st.session_state.get("_filmstack_initial_defaults") or resolve_filmstack_initial_defaults(
-        FILMSTACK_PRESET_CATALOG.valid_preset_ids
+        catalog.valid_preset_ids,
+        template_by_id=template_map,
     )
     render_page(
         context=PageContext(
             get_materials_db=get_workspace_materials,
-            preset_catalog=FILMSTACK_PRESET_CATALOG,
-            sim_wl_from=ui.sim_wl_from,
-            sim_wl_to=ui.sim_wl_to,
+            preset_catalog=catalog,
+            template_by_id=template_map,
             recommended_wl_from=initial.wl_from_um,
             recommended_wl_to=initial.wl_to_um,
             initial_preset_id=initial.preset_id,
@@ -413,7 +529,7 @@ def render_beam_compute_fragment(
             except Exception as e:
                 st.error(str(e))
         st.divider()
-        st.subheader("Result")
+        st.subheader("结果")
         cache = st.session_state.get("beams_result_cache", {})
         if page_key in cache:
             entry = cache[page_key]

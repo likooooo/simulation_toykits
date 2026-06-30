@@ -53,7 +53,7 @@ def _render_cache_section_sl(key_prefix: str, options: list, keys: list, labels:
             )
     with col_role:
         # index 0 -> "f", 1 -> "u"，与显示文案解耦
-        _ROLE_OPTIONS = ["f (求解方程 Lu=f)", "u (求解算子 L 作用于 u)"]
+        _ROLE_OPTIONS = ["f（已知 f，求解 u 使 Lu = f）", "u（已知 u，计算 Lu）"]
         st.radio(
             "input 类型",
             range(len(_ROLE_OPTIONS)),
@@ -71,7 +71,7 @@ def _render_cache_section_sl(key_prefix: str, options: list, keys: list, labels:
     if a_current in keys:
         a_idx = keys.index(a_current) + 1
     st.selectbox(
-        "analytical（可选项, 用于比对结果）",
+        "analytical（可选项，用于比对结果）",
         range(len(analytical_choices)),
         format_func=lambda i: analytical_choices[i],
         index=a_idx,
@@ -138,7 +138,7 @@ def _on_compute() -> None:
     try:
         result = sturm_liouville.run_sturm_liouville(axes, data)
         st.session_state[f._result_key] = result
-        put_result_into_cache_pool(st.session_state, result["result"], "PDE/Sturm Liouville output")
+        put_result_into_cache_pool(st.session_state, result["result"], "PDE/Sturm-Liouville output")
         st.success("计算完成！")
         st.rerun()
     except Exception as e:

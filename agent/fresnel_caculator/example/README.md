@@ -1,6 +1,6 @@
 # Agent 示例命令
 
-默认模型：`qwen2.5:7b`（见 [../README.md](../README.md)）。
+默认模型：`qwen3.5:9b`（见 [../README.md](../README.md)）。
 
 ```bash
 python -m agent.fresnel_caculator.run_agent '列出 SiO2 和 Ta2O5 材料索引'

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Toykits runtime env (source before pytest/streamlit).
+# Toykits runtime env (source before pytest/streamlit). Build compile env is internal to build_toykits.py.
 # Usage: source scripts/init-toykits-build-env.sh
 
 _MANAGE_SHELL_OPTS=0
@@ -13,10 +13,12 @@ fi
 set -euo pipefail
 
 _REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-_ARTIFACTS="${_REPO}/.simulation_core"
-# shellcheck source=../simulation_core/scripts/init-simulation-build-env.sh
-source "${_REPO}/simulation_core/scripts/init-simulation-build-env.sh" "${_ARTIFACTS}" "${_REPO}"
-export SIMULATION_DATABASE_DIR="${SIMULATION_ARTIFACTS_DIR}/assets/database"
+_ARTIFACTS="${SIMULATION_ARTIFACTS_DIR:-${_REPO}/.simulation_toolkits}"
+
+export SIMULATION_ARTIFACTS_DIR="${_ARTIFACTS}"
+export SIMULATION_DATABASE_DIR="${SIMULATION_ARTIFACTS_DIR}/assets"
+export PYTHONPATH="${_REPO}:${SIMULATION_ARTIFACTS_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
+export LD_LIBRARY_PATH="${SIMULATION_ARTIFACTS_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
 if (( _MANAGE_SHELL_OPTS )); then
   eval "${_INIT_SAVED_OPTS}"
