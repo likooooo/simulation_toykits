@@ -43,6 +43,8 @@ from filmstack_simulation.filmstack_optimization.local_search.freehand_state imp
     FreehandSession,
     METRICS,
     build_freehand_wl_indices,
+    clamp_freehand_target_array,
+    validate_freehand_targets,
 )
 from filmstack_simulation.filmstack_optimization.local_search.opt_config import (
     get_freehand_cost_scope,
@@ -51,14 +53,14 @@ from filmstack_simulation.filmstack_optimization.local_search.opt_config import 
     load_freehand_base_config,
 )
 from filmstack_simulation.filmstack_optimization.shared.stack_table import (
+    apply_optimized_thicknesses_to_formula,
     film_layer_indices,
-    formula_from_stack,
     layer_bounds_from_ranges,
     stack_table_rows,
     sync_layer_range_pct_from_table,
 )
 from filmstack_simulation.presets import PresetCatalog
-from filmstack_simulation.simulation import compute_rta_at_angle, resolve_stack
+from filmstack_simulation.simulation import compute_rta_at_angle, resolve_stack, resolve_stack_with_layers
 
 _FREEHAND_FRONTEND = str(Path(__file__).resolve().parents[1] / "component" / "frontend")
 _freehand_component = components.declare_component("freehand_rta_editor", path=_FREEHAND_FRONTEND)
@@ -146,6 +148,7 @@ def build_freehand_config(
         runtime["T_target_spectrum"] = np.asarray(target["T"], dtype=float).reshape(1, -1).tolist()
     if touched.get("A") and target.get("A") is not None:
         runtime["A_target_spectrum"] = np.asarray(target["A"], dtype=float).reshape(1, -1).tolist()
+    validate_freehand_targets(touched, target)
     if wl_um is not None:
         wl_indices = build_freehand_wl_indices(
             scope=scope,
@@ -191,7 +194,9 @@ def run_freehand_optimize(
     thicknesses = list(spec.thicknesses_um)
     for idx, t in zip(spec.film_indices, opt_x):
         thicknesses[idx] = float(t)
-    optimized_formula = formula_from_stack(spec.materials, thicknesses, materials_db)
+    optimized_formula = apply_optimized_thicknesses_to_formula(
+        cfg["formula"], spec.film_indices, thicknesses
+    )
 
     wls, angles, _, _ = fos.resolve_target_axes(cfg)
     curves = compute_rta_at_angle(
@@ -334,7 +339,7 @@ def _handle_component_event(session: FreehandSession, event: dict[str, Any]) -> 
         metric = event.get("metric")
         for m in METRICS:
             if target.get(m) is not None:
-                session.target[m] = np.asarray(target[m], dtype=float)
+                session.target[m] = clamp_freehand_target_array(np.asarray(target[m], dtype=float))
             if touched.get(m):
                 session.touched[m] = True
         if metric in METRICS and edit_indices.get(metric):
@@ -357,6 +362,7 @@ def _run_freehand_optimize(
             pre_current = {
                 k: np.asarray(v, dtype=float).copy() for k, v in session.current.items()
             }
+            validate_freehand_targets(session.touched, session.target)
             cfg = build_freehand_config(
                 working_formula=session.working_formula,
                 wl_from=session.wl_from,
@@ -497,7 +503,12 @@ def render_page(
     just_built = False
     if sim_clicked and formula.strip():
         try:
-            materials, thicknesses_um = _resolve_stack_cached(formula.strip(), db)
+            materials, thicknesses_um, layers = resolve_stack_with_layers(formula.strip(), db)
+            if filmstack_visualizer.layers_has_incoherent(layers):
+                st.warning(
+                    "检测到非相干膜层（厚度带 * 后缀）。"
+                    "当前优化器的梯度仍按相干模型计算，结果可能不准确；非相干优化待后续再开发。"
+                )
             curves = compute_rta_at_angle(
                 materials,
                 thicknesses_um,

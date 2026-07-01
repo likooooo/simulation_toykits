@@ -888,3 +888,121 @@ def test_get_freehand_default_thickness_range_pct() -> None:
     )
 
     assert get_freehand_default_thickness_range_pct() == pytest.approx(30.0)
+
+
+def test_clamp_freehand_target_array() -> None:
+    from filmstack_simulation.filmstack_optimization.local_search.freehand_state import (
+        clamp_freehand_target_array,
+    )
+
+    arr = np.array([0.0, 0.5, 1.2, -0.1])
+    clamped = clamp_freehand_target_array(arr)
+    np.testing.assert_allclose(clamped, [0.0, 0.5, 1.0, 0.0])
+
+
+def test_validate_freehand_targets_accepts_unit_interval() -> None:
+    from filmstack_simulation.filmstack_optimization.local_search.freehand_state import (
+        validate_freehand_targets,
+    )
+
+    validate_freehand_targets(
+        {"R": True, "T": False, "A": False},
+        {"R": np.linspace(0.0, 1.0, 5), "T": None, "A": None},
+    )
+
+
+def test_validate_freehand_targets_rejects_out_of_range() -> None:
+    from filmstack_simulation.filmstack_optimization.local_search.freehand_state import (
+        validate_freehand_targets,
+    )
+
+    with pytest.raises(ValueError, match="R 目标值须在"):
+        validate_freehand_targets(
+            {"R": True, "T": False, "A": False},
+            {"R": np.array([0.1, 1.5]), "T": None, "A": None},
+        )
+
+
+def test_validate_freehand_targets_rejects_nan() -> None:
+    from filmstack_simulation.filmstack_optimization.local_search.freehand_state import (
+        validate_freehand_targets,
+    )
+
+    with pytest.raises(ValueError, match="R 目标值须为有限数值"):
+        validate_freehand_targets(
+            {"R": True, "T": False, "A": False},
+            {"R": np.array([0.1, np.nan]), "T": None, "A": None},
+        )
+
+
+def test_handle_component_event_clamps_target(curve_drag_session) -> None:
+    session, _wl = curve_drag_session
+    from filmstack_simulation.filmstack_optimization.local_search.page import _handle_component_event
+
+    _handle_component_event(
+        session,
+        {
+            "type": "curveDragEnd",
+            "target": {"R": [0.3, 1.2], "T": None, "A": None},
+            "touched": {"R": True, "T": False, "A": False},
+            "triggerOptimize": False,
+        },
+    )
+    np.testing.assert_allclose(session.target["R"], [0.3, 1.0])
+
+
+def test_apply_optimized_thicknesses_preserves_mg_and_incoherent() -> None:
+    from filmstack_simulation.filmstack_optimization.shared.stack_table import (
+        apply_optimized_thicknesses_to_formula,
+    )
+
+    orig = "air 0 1.0 0.0 [8e-06 au glass 1.5] 4000* air 0 1.0 0.0"
+    out = apply_optimized_thicknesses_to_formula(orig, [1], [0.0, 3999.92903, 0.0])
+    assert "[8e-06 au glass 1.5]" in out
+    assert "3999.92903*" in out
+    assert "MG(" not in out
+    assert "1.0 0.0" in out
+
+
+def test_apply_optimized_thicknesses_bookend_stack(simulation) -> None:
+    from filmstack_simulation.filmstack_optimization.shared.stack_table import (
+        apply_optimized_thicknesses_to_formula,
+        film_layer_indices,
+    )
+    from filmstack_visualizer import layers_from_formula_with_flags
+
+    orig = "air 0.1 SiO2 0.1 1.46 0 Si 0.1 3.87 0.02"
+    _, th, _ = layers_from_formula_with_flags(orig, {}, simulation_module=simulation)
+    film_indices = film_layer_indices(len(th))
+    new_th = list(th)
+    new_th[2] = 0.12
+    out = apply_optimized_thicknesses_to_formula(orig, film_indices, new_th)
+    assert "SiO2 0.12" in out
+    assert "1.46 0" in out
+
+
+def test_apply_optimized_thicknesses_round_trip_incoherent(simulation) -> None:
+    from filmstack_simulation.filmstack_optimization.shared.stack_table import (
+        apply_optimized_thicknesses_to_formula,
+        film_layer_indices,
+    )
+    from filmstack_visualizer import layers_from_formula_with_flags
+
+    orig = "air 0 film 100* 1.5 0 air 0"
+    _, th, flags = layers_from_formula_with_flags(orig, {}, simulation_module=simulation)
+    film_indices = film_layer_indices(len(th))
+    new_th = list(th)
+    new_th[1] = 95.5
+    out = apply_optimized_thicknesses_to_formula(orig, film_indices, new_th)
+    _, _, flags2 = layers_from_formula_with_flags(out, {}, simulation_module=simulation)
+    assert flags2[1] is True
+    assert "95.5*" in out
+
+
+def test_layers_has_incoherent_on_star_formula(simulation) -> None:
+    from filmstack_visualizer import build_tmm_layers, layers_from_formula_with_flags, layers_has_incoherent
+
+    formula = "air 0 film 100* 1.5 0 air 0"
+    mats, th, flags = layers_from_formula_with_flags(formula, {}, simulation_module=simulation)
+    layers = build_tmm_layers(mats, th, incoherent_flags=flags, simulation_module=simulation)
+    assert layers_has_incoherent(layers) is True

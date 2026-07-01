@@ -11,7 +11,36 @@ import numpy as np
 
 METRICS = ("R", "T", "A")
 Y_PERCENT_CAP = 100.0
-Y_PERCENT_FLOOR = 1.0
+Y_PERCENT_FLOOR = 0.0
+TARGET_FRAC_MIN = 0.0
+TARGET_FRAC_MAX = 1.0
+
+
+def clamp_freehand_target_array(arr: np.ndarray) -> np.ndarray:
+    """Clip target spectrum to physical R/T/A fraction range [0, 1]."""
+    a = np.asarray(arr, dtype=float)
+    return np.clip(a, TARGET_FRAC_MIN, TARGET_FRAC_MAX)
+
+
+def validate_freehand_targets(
+    touched: Mapping[str, bool],
+    target: Mapping[str, np.ndarray | None],
+) -> None:
+    """Raise ValueError if any touched metric has values outside [0, 1] or non-finite."""
+    for metric in METRICS:
+        if not touched.get(metric):
+            continue
+        arr = target.get(metric)
+        if arr is None:
+            continue
+        a = np.asarray(arr, dtype=float)
+        if not np.all(np.isfinite(a)):
+            raise ValueError(f"{metric} 目标值须为有限数值")
+        if np.any(a < TARGET_FRAC_MIN) or np.any(a > TARGET_FRAC_MAX):
+            raise ValueError(
+                f"{metric} 目标值须在 [{TARGET_FRAC_MIN:g}, {TARGET_FRAC_MAX:g}] 范围内"
+                "（R/T/A 为功率分数）"
+            )
 
 
 def auto_y_max_percent(*series: np.ndarray | None) -> float:
