@@ -11,7 +11,7 @@ import numpy as np
 
 METRICS = ("R", "T", "A")
 Y_PERCENT_CAP = 100.0
-Y_PERCENT_FLOOR = 0.0
+Y_PERCENT_FLOOR = 1.0
 TARGET_FRAC_MIN = 0.0
 TARGET_FRAC_MAX = 1.0
 
