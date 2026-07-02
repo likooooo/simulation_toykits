@@ -8,6 +8,7 @@
   "#thickness_min": 0.0,
   "#thickness_max": 10.0,
   "thickness_step_um": 0.00000001,
+  "max_optimizable_layers": 64,
   "optimizer": {
     "method": "L-BFGS-B",
     "options": {

@@ -176,13 +176,14 @@ def _run_parity_plots(
     *,
     prefix: str,
     section: str,
+    max_iter: int = PARITY_MAX_ITER,
 ) -> list[ReportItem]:
     items: list[ReportItem] = []
     summary_rows: list = []
     for label, problem in scenarios:
         report = run_parity(
             problem,
-            max_iter=PARITY_MAX_ITER,
+            max_iter=max_iter,
             da_tol_nm=PARITY_DA_TOL_NM,
             chi2_rtol=1e-3,
             label=label,
@@ -218,15 +219,20 @@ def _png_data_uri(path: Path) -> str:
     return f"data:image/png;base64,{payload}"
 
 
-def _write_index(out_dir: Path, items: list[ReportItem]) -> Path:
+def _write_index(
+    out_dir: Path,
+    items: list[ReportItem],
+    *,
+    parity_max_iter: int = PARITY_MAX_ITER,
+) -> Path:
     sections: dict[str, list[ReportItem]] = {}
     for item in items:
         sections.setdefault(item.section, []).append(item)
 
     section_titles = {
         "derivatives": "Thickness derivative cross-check",
-        "parity_2layer": f"LM parity — 2-layer stack ({PARITY_MAX_ITER} iter)",
-        "parity_6layer": f"LM parity — 6-layer stack ({PARITY_MAX_ITER} iter, expected divergence)",
+        "parity_2layer": f"LM parity — 2-layer stack ({parity_max_iter} iter)",
+        "parity_6layer": f"LM parity — 6-layer stack ({parity_max_iter} iter, expected divergence)",
     }
 
     body_parts: list[str] = [
@@ -315,6 +321,12 @@ def main() -> int:
         action="store_true",
         help="Skip n-k derivative map (slow)",
     )
+    parser.add_argument(
+        "--parity-max-iter",
+        type=int,
+        default=PARITY_MAX_ITER,
+        help=f"LM parity outer-loop iterations (default: {PARITY_MAX_ITER})",
+    )
     args = parser.parse_args()
 
     if not simulation_available():
@@ -354,6 +366,7 @@ def main() -> int:
             out_dir,
             prefix="parity_2L_",
             section="parity_2layer",
+            max_iter=args.parity_max_iter,
         )
     )
     items.extend(
@@ -362,6 +375,7 @@ def main() -> int:
             out_dir,
             prefix="parity_6L_",
             section="parity_6layer",
+            max_iter=args.parity_max_iter,
         )
     )
 
@@ -383,7 +397,7 @@ def main() -> int:
         except Exception as exc:
             print(f"warning: skipped n-k map: {exc}", file=sys.stderr)
 
-    index_path = _write_index(out_dir, items)
+    index_path = _write_index(out_dir, items, parity_max_iter=args.parity_max_iter)
     print(f"\nwrote {index_path}")
     for item in items:
         print(f"  [{item.status:4s}] {item.path}")
