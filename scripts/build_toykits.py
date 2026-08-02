@@ -22,6 +22,7 @@ from urllib.request import Request, urlopen
 RUNTIME_DIR = ".simulation_toolkits"
 DEFAULT_BUILD_REL = Path("simulation_core/build")
 ARTIFACTS_REPO = "likooooo/simulation_toolkits_artifacts"
+SIMULATION_CORE_REPO = "likooooo/simulation"
 ARTIFACT_TAR_NAME = "simulation_toolkits-linux-x86_64.tar.gz"
 MANIFEST_NAME = "manifest.json"
 
@@ -53,7 +54,6 @@ PY_CORE_PLUGINS_KEEP = frozenset(
     {
         "visualizer.py",
         "viz_io.py",
-        "plot_save_dir.py",
         "pipe_utils.py",
         "panel_renderer.py",
         "plot_source.py",
@@ -64,6 +64,7 @@ SIMULATION_PLUGINS_KEEP = frozenset(
         "simulation_database_parser.py",
         "filmstack_visualizer.py",
         "filmstack_optimization_utils.py",
+        "layer_visualizer.py",
         "simulation_paths.py",
         "tmm_utils.py",
     }
@@ -294,7 +295,7 @@ def build_bench_step() -> None:
         [sys.executable, "-B", str(script), "--output", str(output)],
         cwd=repo_root(),
         env=env,
-        hint="请 export FREESNELL_DIR/SCM/SLIB 或将工具链放到 build_freesnell_compare_ui.py 中的默认路径",
+        hint="请将 FreeSnell 放到 $GENERATE_GOLDEN_TOOLS_DIR（默认 ~/repos）约定子目录",
     )
     html_path = output / FS_COMPARE_HTML_NAME
     if not html_path.is_file():
@@ -463,10 +464,136 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def github_request_headers() -> dict[str, str]:
+    headers = {"Accept": "application/vnd.github+json"}
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
 def github_get_json(url: str) -> dict:
-    req = Request(url, headers={"Accept": "application/vnd.github+json"})
+    req = Request(url, headers=github_request_headers())
     with urlopen(req, timeout=60) as resp:
         return json.loads(resp.read().decode())
+
+
+def github_default_branch(repo: str) -> str:
+    if gh_authenticated():
+        result = run(
+            ["gh", "api", f"repos/{repo}", "--jq", ".default_branch"],
+            capture=True,
+        )
+        branch = result.stdout.strip()
+        if branch:
+            return branch
+    data = github_get_json(f"{GITHUB_API}/repos/{repo}")
+    branch = data.get("default_branch")
+    if not branch:
+        raise RuntimeError(f"无法获取 {repo} 的 default_branch")
+    return branch
+
+
+def github_branch_head(repo: str, branch: str) -> str:
+    if gh_authenticated():
+        result = run(
+            ["gh", "api", f"repos/{repo}/commits/{branch}", "--jq", ".sha"],
+            capture=True,
+        )
+        sha = result.stdout.strip()
+        if sha:
+            return sha
+    data = github_get_json(f"{GITHUB_API}/repos/{repo}/commits/{branch}")
+    sha = data.get("sha")
+    if not sha:
+        raise RuntimeError(f"无法获取 {repo}@{branch} 的 HEAD commit")
+    return sha
+
+
+def github_api_latest_commit(repo: str) -> tuple[str, str]:
+    branch = github_default_branch(repo)
+    sha = github_branch_head(repo, branch)
+    return branch, sha
+
+
+def git_ssh_remote_head(repo: str) -> tuple[str, str]:
+    url = f"git@github.com:{repo}.git"
+    result = run(
+        ["git", "ls-remote", "--symref", url, "HEAD"],
+        capture=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"git ls-remote 无法访问 {repo}: {result.stderr.strip() or result.stdout.strip()}"
+        )
+    branch = "main"
+    sha = ""
+    for line in result.stdout.splitlines():
+        if line.startswith("ref: refs/heads/"):
+            branch = line.split("refs/heads/", 1)[1].split("\t", 1)[0]
+        elif line.endswith("\tHEAD"):
+            sha = line.split("\t", 1)[0]
+    if not sha:
+        raise RuntimeError(f"git ls-remote 未返回 {repo} 的 HEAD commit")
+    return branch, sha
+
+
+def github_latest_simulation_core_commit() -> tuple[str, str]:
+    errors: list[str] = []
+    for fetch in (
+        lambda: github_api_latest_commit(SIMULATION_CORE_REPO),
+        lambda: git_ssh_remote_head(SIMULATION_CORE_REPO),
+    ):
+        try:
+            return fetch()
+        except (HTTPError, URLError, RuntimeError, subprocess.CalledProcessError) as exc:
+            errors.append(str(exc))
+    raise RuntimeError("; ".join(errors))
+
+
+_BANNER_COMMIT_RE = re.compile(r"\*\s+Git commit : (\S+)")
+
+
+def runtime_embedded_commit() -> str:
+    result = run(
+        [
+            sys.executable,
+            "-c",
+            "import simulation; simulation.print_simulation_banner()",
+        ],
+        env=subprocess_env(),
+        capture=True,
+    )
+    match = _BANNER_COMMIT_RE.search(result.stderr)
+    if not match:
+        raise RuntimeError("无法从 print_simulation_banner 输出解析 Git commit")
+    commit = match.group(1)
+    if commit == "unknown":
+        raise RuntimeError("runtime 内嵌 Git commit 为 unknown")
+    return commit
+
+
+def cmd_verify_runtime_commit(_args: argparse.Namespace) -> int:
+    require_artifact()
+    try:
+        runtime_commit = runtime_embedded_commit()
+        branch, expected_commit = github_latest_simulation_core_commit()
+    except (HTTPError, URLError, RuntimeError) as exc:
+        print(f"错误: runtime commit 校验失败: {exc}", file=sys.stderr)
+        return 1
+
+    if runtime_commit != expected_commit:
+        print(
+            "错误: runtime 内嵌 simulation_core commit 与 GitHub 最新 commit 不一致\n"
+            f"  runtime : {runtime_commit}\n"
+            f"  GitHub  : {expected_commit} ({SIMULATION_CORE_REPO}@{branch})",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"runtime commit OK: {runtime_commit} ({SIMULATION_CORE_REPO}@{branch})")
+    return 0
 
 
 def latest_release_asset_url(asset_name: str) -> str:
@@ -702,15 +829,7 @@ def local_runtime_env() -> dict[str, str]:
         "SIMULATION_ARTIFACTS_DIR": str(rt),
         "PYTHONPATH": f"{repo_root().resolve()}:{rt}:{os.environ.get('PYTHONPATH', '')}".rstrip(":"),
     }
-    for key in (
-        "SIMULATION_DATABASE_KEY",
-        "FREESNELL_DIR",
-        "SCM",
-        "SLIB",
-        "SCHEME_LIBRARY_PATH",
-        "NK_RWB",
-        "NK_DATABASE_PATH",
-    ):
+    for key in ("SIMULATION_DATABASE_KEY",):
         val = os.environ.get(key, "").strip()
         if val:
             env[key] = val
@@ -1132,6 +1251,11 @@ def main() -> int:
         action="store_true",
         help="下载 GitHub Release latest artifact 到 .simulation_toolkits/",
     )
+    parser.add_argument(
+        "--verify_runtime_commit",
+        action="store_true",
+        help="校验 runtime 内嵌 simulation_core commit 与 GitHub 默认分支 HEAD 一致",
+    )
     parser.add_argument("--toolkits", action="store_true", help="编译 collect + prune 插件")
     parser.add_argument("--bench", action="store_true", help="FreeSnell 比对 HTML")
     parser.add_argument("--database", action="store_true", help="预编译 database.bin")
@@ -1152,9 +1276,21 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.download_toolkits:
-        if args.step1 or args.step2 or args.toolkits or args.bench or args.database:
+        if (
+            args.step1
+            or args.step2
+            or args.toolkits
+            or args.bench
+            or args.database
+            or args.verify_runtime_commit
+        ):
             parser.error("--download_toolkits 与其它选项互斥")
         return cmd_download_toolkits(args)
+
+    if args.verify_runtime_commit:
+        if args.step1 or args.step2 or args.toolkits or args.bench or args.database:
+            parser.error("--verify_runtime_commit 与其它选项互斥")
+        return cmd_verify_runtime_commit(args)
 
     do_build, consume = parse_invocation(args)
     handlers = {

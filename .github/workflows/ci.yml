@@ -15,7 +15,6 @@ jobs:
 
     steps:
       - name: Install SSH Key
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.MY_PRIVATE_KEY_1 }}
@@ -78,16 +77,14 @@ jobs:
           sudo ldconfig
 
       - name: Verify runtime and run tests
+        env:
+          GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20
         run: |
           source .venv/bin/activate
           source scripts/init-toykits-build-env.sh
           set -euo pipefail
           test -f "${SIMULATION_ARTIFACTS_DIR}/assets/database.bin"
-          python -c "
-          import simulation
-          import filmstack_visualizer
-          print('OK')
-          "
+          python scripts/build_toykits.py --verify_runtime_commit
           python scripts/check_import_contract.py
           python -m pytest test/ -v --tb=short
 

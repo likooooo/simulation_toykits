@@ -33,7 +33,7 @@ python scripts/build_toykits.py local
 ```bash
 sudo apt install -y \
   build-essential clang-20 llvm-20-dev pkg-config python3-venv python3-dev \
-  libboost-all-dev libeigen3-dev libfftw3-dev libopenmpi-dev
+  libboost-all-dev libeigen3-dev libfftw3-dev
 pip install -r requirements-build.txt
 python scripts/build_toykits.py              # 全量：toolkits + database + bench
 python scripts/build_toykits.py release      # 发布到 simulation_toolkits_artifacts

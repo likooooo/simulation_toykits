@@ -56,6 +56,10 @@ def quantity_from_rt(
     if quantity == "neg_log_T":
         t = 0.5 * (t_s + t_p)
         return -np.log(np.maximum(t, 1e-30))
+    if quantity == "T_plus_half_R":
+        t = 0.5 * (t_s + t_p)
+        r = 0.5 * (r_s + r_p)
+        return t + 0.5 * r
     raise ValueError(f"unknown quantity: {quantity}")
 
 

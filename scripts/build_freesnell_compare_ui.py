@@ -48,50 +48,80 @@ DEFAULT_OUTPUT_DIR = REPO_ROOT / ".simulation_toolkits" / "assets" / "fs_compare
 FS_MATERIALS_DIR = REPO_ROOT / "simulation_core" / "assets" / "database" / "fs" / "materials"
 EV_TO_UM = 1.23984193
 
-def _toolchain_path(env_key: str, default: str) -> Path:
-    return Path(os.environ.get(env_key, default))
+# FreeSnell is an optional local toolchain under GENERATE_GOLDEN_TOOLS_DIR.
+# Paths are resolved here (not via simulation_core/scripts): toykits CI must
+# run on downloaded release artifacts only, without the simulation_core tree.
+_ENV_TOOLS_DIR = "GENERATE_GOLDEN_TOOLS_DIR"
+_FREESNELL_REL_DIR = "freesnell-build/FreeSnell"
+_FREESNELL_REL_SCM = "freesnell-install/bin/scm"
+_FREESNELL_REL_SLIB = "freesnell-install/lib/slib"
+_FREESNELL_DEFAULTS: tuple[Path, Path, Path] | None = None
 
 
-DEFAULT_FREESNELL_DIR = _toolchain_path("FREESNELL_DIR", "/home/like/repos/freesnell-build/FreeSnell")
-DEFAULT_SCM = _toolchain_path("SCM", "/home/like/repos/freesnell-install/bin/scm")
-DEFAULT_SLIB = _toolchain_path("SLIB", "/home/like/repos/freesnell-install/lib/slib/")
+def _tools_dir() -> Path:
+    env = os.environ.get(_ENV_TOOLS_DIR, "").strip()
+    if env:
+        return Path(env).expanduser().resolve()
+    return (Path.home() / "repos").resolve()
+
+
+def _freesnell_defaults() -> tuple[Path, Path, Path]:
+    """Return (FREESNELL_DIR, SCM, SLIB) under GENERATE_GOLDEN_TOOLS_DIR."""
+    global _FREESNELL_DEFAULTS
+    if _FREESNELL_DEFAULTS is None:
+        root = _tools_dir()
+        _FREESNELL_DEFAULTS = (
+            (root / _FREESNELL_REL_DIR).resolve(),
+            (root / _FREESNELL_REL_SCM).resolve(),
+            (root / _FREESNELL_REL_SLIB).resolve(),
+        )
+    return _FREESNELL_DEFAULTS
+
+
+def _tools_dir_hint() -> str:
+    return (
+        f"export {_ENV_TOOLS_DIR}=~/repos\n"
+        f"  # expect: {_FREESNELL_REL_DIR}, {_FREESNELL_REL_SCM}, {_FREESNELL_REL_SLIB}"
+    )
 
 
 def resolve_freesnell_env() -> dict[str, str]:
-    """Resolve FreeSnell runtime env: os.environ overrides, else hardcoded defaults."""
-    freesnell_dir = Path(
-        os.environ.get("FREESNELL_DIR", "").strip() or str(DEFAULT_FREESNELL_DIR)
-    ).resolve()
-    scm = Path(os.environ.get("SCM", "").strip() or str(DEFAULT_SCM)).resolve()
-    slib_raw = os.environ.get("SLIB", "").strip() or str(DEFAULT_SLIB)
-    slib = Path(slib_raw).resolve()
+    """Resolve FreeSnell runtime env from GENERATE_GOLDEN_TOOLS_DIR layout.
+
+    Returned FREESNELL_DIR/SCM/SLIB keys are for the FreeSnell subprocess only.
+    """
+    default_dir, default_scm, default_slib = _freesnell_defaults()
+    freesnell_dir = default_dir.resolve()
+    scm = default_scm.resolve()
+    slib = default_slib.resolve()
     slib_str = str(slib)
     if not slib_str.endswith("/"):
         slib_str += "/"
-    nk_rwb = os.environ.get("NK_RWB", "").strip() or str(freesnell_dir / "nk.rwb")
-    scheme_lib = os.environ.get("SCHEME_LIBRARY_PATH", "").strip() or slib_str
-    nk_db = os.environ.get("NK_DATABASE_PATH", "").strip() or nk_rwb
+    nk_rwb = str(freesnell_dir / "nk.rwb")
+    scheme_lib = slib_str
+    nk_db = nk_rwb
 
     issues: list[str] = []
     if not freesnell_dir.is_dir():
-        issues.append(f"FREESNELL_DIR 不存在: {freesnell_dir}")
+        issues.append(f"FreeSnell 源树不存在: {freesnell_dir}")
     if not Path(nk_rwb).is_file():
         issues.append(f"NK_RWB 不存在: {nk_rwb}")
     if not scm.is_file() or not os.access(scm, os.X_OK):
-        issues.append(f"SCM 不可执行: {scm}")
+        issues.append(f"scm 不可执行: {scm}")
     slib_path = Path(slib_str)
     if not slib_path.is_dir():
-        issues.append(f"SLIB 不存在: {slib_path}")
+        issues.append(f"slib 不存在: {slib_path}")
     elif not (slib_path / "require.scm").is_file() and not (slib_path / "require").is_file():
-        issues.append(f"SLIB 缺少 require.scm: {slib_path}")
+        issues.append(f"slib 缺少 require.scm: {slib_path}")
 
     if issues:
         raise RuntimeError(
             "FreeSnell toolchain 不可用，--bench 失败。\n"
             + "\n".join(f"  - {item}" for item in issues)
-            + "\n请 export FREESNELL_DIR/SCM/SLIB 或将工具链放到默认路径"
-            f"（FREESNELL_DIR={DEFAULT_FREESNELL_DIR}，"
-            f"SCM={DEFAULT_SCM}，SLIB={DEFAULT_SLIB}）。"
+            + f"\n请将工具链放到 GENERATE_GOLDEN_TOOLS_DIR 约定路径：\n  {_tools_dir_hint()}\n"
+            f"  freesnell={default_dir}\n"
+            f"  scm={default_scm}\n"
+            f"  slib={default_slib}"
         )
 
     return {
@@ -370,7 +400,7 @@ FREESNEL_COMPARE_SPECS: dict[str, CompareSpec] = {'fs_ag_mgo_3nm': {'granular_ir
  'fs_hdpe_pas_32': {'granular_ir': False,
                     'invoke': 'export/hdpe-pas-inc',
                     'png_dims': [425, 265],
-                    'quantity': 'T',
+                    'quantity': 'T_plus_half_R',
                     'quantity_col': 1,
                     'scm_file': 'polyethylene.scm',
                     'x_axis': 'wavenumber_cm'},
@@ -959,7 +989,7 @@ FREESNEL_CUSTOM_EXPORT_SCM = r""";;; --- custom single-stack exporters ---
   (plot-response (title "1x14 PE inc" "PE-1x14-inc")
     (samples 200) (range 0 1) (logarithmic 3e-6 15e-6) (incident 4 'T)
     (optical-stack (nominal 6.7e-6) (substrate 1)
-      (repeat 1 (layer* 1.0 1e-3) (layer* HDPE 14e-6))
+      (repeat 1 (layer* 1.0 1e-3) (layer HDPE 14e-6))
       (substrate 1))))
 (define (export-pe-2x14-co)
   (plot-response (title "2x14 PE co" "PE-2x14-co")
@@ -971,7 +1001,7 @@ FREESNEL_CUSTOM_EXPORT_SCM = r""";;; --- custom single-stack exporters ---
   (plot-response (title "2x14 PE inc" "PE-2x14-inc")
     (samples 200) (range 0 1) (logarithmic 3e-6 15e-6) (incident 4 'T)
     (optical-stack (nominal 6.7e-6) (substrate 1)
-      (repeat 2 (layer* 1.0 1e-3) (layer* HDPE 14e-6))
+      (repeat 2 (layer* 1.0 1e-3) (layer HDPE 14e-6))
       (substrate 1))))
 (define (export-pe-3x14-co)
   (plot-response (title "3x14 PE co" "PE-3x14-co")
@@ -981,9 +1011,9 @@ FREESNEL_CUSTOM_EXPORT_SCM = r""";;; --- custom single-stack exporters ---
       (substrate 1))))
 (define (export-pe-3x14-inc)
   (plot-response (title "3x14 PE inc" "PE-3x14-inc")
-    (samples 200) (range 0 1) (logarithmic 3e-6 15e-6) (incident 4 'T)
+    (samples 1200) (range 0 1) (logarithmic 3e-6 15e-6) (incident 4 'T)
     (optical-stack (nominal 6.7e-6) (substrate 1)
-      (repeat 3 (layer* 1.0 1e-3) (layer* HDPE 14e-6))
+      (repeat 3 (layer* 1.0 1e-3) (layer HDPE 14e-6))
       (substrate 1))))
 (define (export-cloud-h2o)
   (define cld01 (granular-IR h2o 1e-6 1))
@@ -1582,7 +1612,7 @@ def plot_compare_png(
 
 RMSE_WARN_THRESHOLD = 1e-4
 GRANULAR_NOTE = "掺杂模型"
-COMMENT_INCOHERENT = "暂不支持非相干模型"
+INCOHERENT_NOTE = "非相干模型"
 
 # FreeSnell export/cloud-* and export/ruby-* use layer* (opticompute.scm).
 
@@ -1685,19 +1715,32 @@ def _join_comment(*parts: str) -> str:
     return "；".join(items)
 
 
-def _specific_mismatch_comment(
+def _annotation_notes(
     template_id: str,
     spec: CompareSpec,
     label: str,
     template_json: dict[str, Any],
-) -> str:
+) -> list[str]:
+    notes: list[str] = []
+    if spec.get("granular_ir"):
+        notes.append(GRANULAR_NOTE)
     if is_incoherent_template(
         template_id,
         template_json=template_json,
         label=label,
         invoke=str(spec.get("invoke", "")),
     ):
-        return COMMENT_INCOHERENT
+        notes.append(INCOHERENT_NOTE)
+    return notes
+
+
+def _specific_mismatch_comment(
+    template_id: str,
+    spec: CompareSpec,
+    label: str,
+    template_json: dict[str, Any],
+) -> str:
+    del template_id, spec, label
     return _optical_thickness_comment(template_json)
 
 
@@ -1714,9 +1757,7 @@ def resolve_comment(
         if over_threshold
         else ""
     )
-    if spec.get("granular_ir"):
-        return _join_comment(GRANULAR_NOTE, specific)
-    return specific
+    return _join_comment(*_annotation_notes(template_id, spec, label, template_json), specific)
 
 
 def finalize_row_comment(
@@ -1732,7 +1773,16 @@ def finalize_row_comment(
         return
     over_threshold = rmse >= RMSE_WARN_THRESHOLD
     row["expected_mismatch"] = over_threshold
-    if over_threshold or spec.get("granular_ir"):
+    annotated = bool(
+        spec.get("granular_ir")
+        or is_incoherent_template(
+            template_id,
+            template_json=template_json,
+            label=label,
+            invoke=str(spec.get("invoke", "")),
+        )
+    )
+    if over_threshold or annotated:
         row["comment"] = resolve_comment(
             template_id, spec, label, template_json, over_threshold=over_threshold
         )
@@ -1775,7 +1825,7 @@ def write_static_site(
         label = html.escape(str(row.get("label", "")))
         if status != "ok":
             comment = html.escape(str(row.get("error", "")))
-        elif row.get("expected_mismatch") or row.get("granular_ir"):
+        elif row.get("expected_mismatch") or row.get("granular_ir") or row.get("incoherent"):
             comment = html.escape(str(row.get("comment", "")))
         else:
             comment = ""
@@ -1861,6 +1911,12 @@ def process_template(
         "id": template_id,
         "label": label,
         "granular_ir": bool(spec.get("granular_ir", False)),
+        "incoherent": is_incoherent_template(
+            template_id,
+            template_json=template_json,
+            label=label,
+            invoke=str(spec.get("invoke", "")),
+        ),
         "status": "ok",
     }
     try:
@@ -1999,12 +2055,16 @@ def describe_template_failure(exc: BaseException) -> str:
 
 def diagnose_freesnell_config(
     *,
-    freesnell_dir: Path = DEFAULT_FREESNELL_DIR,
-    scm: Path = DEFAULT_SCM,
-    slib: Path = DEFAULT_SLIB,
+    freesnell_dir: Path | None = None,
+    scm: Path | None = None,
+    slib: Path | None = None,
     nk_rwb: Path | None = None,
 ) -> tuple[FreeSnellConfig | None, str | None]:
     """Return (config, error_message). error_message is set when toolchain is unavailable."""
+    default_dir, default_scm, default_slib = _freesnell_defaults()
+    freesnell_dir = freesnell_dir or default_dir
+    scm = scm or default_scm
+    slib = slib or default_slib
     resolved_nk = nk_rwb or (freesnell_dir / "nk.rwb")
     cfg = FreeSnellConfig(
         freesnell_dir=freesnell_dir,
@@ -2029,9 +2089,9 @@ def diagnose_freesnell_config(
 def build_freesnell_compare_ui(
     output: Path | None = None,
     *,
-    freesnell_dir: Path = DEFAULT_FREESNELL_DIR,
-    scm: Path = DEFAULT_SCM,
-    slib: Path = DEFAULT_SLIB,
+    freesnell_dir: Path | None = None,
+    scm: Path | None = None,
+    slib: Path | None = None,
     nk_rwb: Path | None = None,
     font_family: str | None = None,
 ) -> int:
@@ -2122,9 +2182,6 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_OUTPUT_DIR,
         help="Output directory for fs_baseline_vs_toykits.html",
     )
-    parser.add_argument("--freesnell-dir", type=Path, default=DEFAULT_FREESNELL_DIR)
-    parser.add_argument("--scm", type=Path, default=DEFAULT_SCM)
-    parser.add_argument("--slib", type=Path, default=DEFAULT_SLIB)
     parser.add_argument("--nk-rwb", type=Path, default=None)
     parser.add_argument(
         "--font-family",
@@ -2133,11 +2190,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    default_dir, default_scm, default_slib = _freesnell_defaults()
     code = build_freesnell_compare_ui(
         args.output,
-        freesnell_dir=args.freesnell_dir,
-        scm=args.scm,
-        slib=args.slib,
+        freesnell_dir=default_dir,
+        scm=default_scm,
+        slib=default_slib,
         nk_rwb=args.nk_rwb,
         font_family=args.font_family,
     )

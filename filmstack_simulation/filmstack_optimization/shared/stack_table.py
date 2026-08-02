@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Mapping, Sequence
 
 import pandas as pd
 
-from filmstack_simulation.presets import layer_token_from_material
+import filmstack_visualizer
+from filmstack_simulation.presets import format_thickness_um, layer_token_from_material
 from filmstack_simulation.simulation import nk_at_wavelength
 
 
@@ -113,6 +115,75 @@ def sync_layer_range_pct_from_table(
         if pd.notna(val):
             out[int(idx)] = float(val)
     return out
+
+
+def _expand_formula_repeats(formula: str) -> str:
+    while "(" in formula:
+        match = re.search(r"\(([^()]+)\)\^(\d+)", formula)
+        if not match:
+            break
+        content, times = match.group(1), int(match.group(2))
+        formula = formula.replace(match.group(0), (content + " ") * times)
+    return formula
+
+
+def _formula_layer_thickness_token_indices(tokens: Sequence[str]) -> list[tuple[int, bool]]:
+    """For each parsed layer: (thickness_token_index, incoherent)."""
+    infos: list[tuple[int, bool]] = []
+    i = 0
+    while i < len(tokens):
+        if i + 1 >= len(tokens):
+            break
+        token = tokens[i]
+        if token.startswith("["):
+            _, incoherent = filmstack_visualizer._parse_thickness_um(tokens[i + 1])
+            infos.append((i + 1, incoherent))
+            i += 2
+            continue
+        _, incoherent = filmstack_visualizer._parse_thickness_um(tokens[i + 1])
+        infos.append((i + 1, incoherent))
+        if i + 3 < len(tokens):
+            try:
+                float(tokens[i + 2])
+                float(tokens[i + 3])
+                i += 4
+                continue
+            except ValueError:
+                pass
+        i += 2
+    return infos
+
+
+def apply_optimized_thicknesses_to_formula(
+    formula: str,
+    film_indices: Sequence[int],
+    thicknesses_um: Sequence[float],
+) -> str:
+    """Patch only optimizable layer thickness tokens; preserve MG brackets, *, inline n/k."""
+    expanded = _expand_formula_repeats(formula.strip())
+    parsed = filmstack_visualizer.parse_filmstack_formula_v1(expanded)
+    thicknesses_parsed = [float(layer["Thickness (um)"]) for layer in parsed]
+    leading_bookend = thicknesses_parsed[0] != 0.0
+
+    tokens = list(filmstack_visualizer._tokenize_filmstack_formula(expanded))
+    layer_tokens = _formula_layer_thickness_token_indices(tokens)
+    if len(layer_tokens) != len(parsed):
+        raise ValueError(
+            f"formula layer token count {len(layer_tokens)} != parsed layers {len(parsed)}"
+        )
+
+    for exp_idx in film_indices:
+        parsed_idx = int(exp_idx) - (1 if leading_bookend else 0)
+        if parsed_idx < 0 or parsed_idx >= len(parsed):
+            raise ValueError(
+                f"film index {exp_idx} maps to invalid parsed layer {parsed_idx}"
+            )
+        tok_idx, incoherent = layer_tokens[parsed_idx]
+        new_t = float(thicknesses_um[exp_idx])
+        suffix = "*" if incoherent else ""
+        tokens[tok_idx] = format_thickness_um(new_t) + suffix
+
+    return " ".join(tokens)
 
 
 def formula_from_stack(

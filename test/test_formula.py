@@ -7,6 +7,7 @@ import pytest
 from filmstack_visualizer import (
     build_tmm_layers,
     layers_from_formula,
+    layers_from_formula_with_flags,
     normalize_filmstack_formula,
     parse_filmstack_formula_v1,
     plot_filmstack,
@@ -248,3 +249,34 @@ class TestPlotFilmstackMaterialLabelsRegression:
         assert len(zero_vlines) == 5
         linewidths = {line.get_linewidth() for line in zero_vlines}
         assert len(linewidths) == 1
+
+
+class TestIncoherentThicknessSyntax:
+    def test_parse_star_suffix(self):
+        from filmstack_visualizer import _parse_thickness_um
+
+        assert _parse_thickness_um("1000*") == (1000.0, True)
+        assert _parse_thickness_um("0.1*") == (0.1, True)
+        assert _parse_thickness_um("14") == (14.0, False)
+
+    def test_layers_from_formula_with_flags(self, simulation):
+        mats, th, flags = layers_from_formula_with_flags(
+            "air 0 1.0 0 (air 1000* 1.0 0 SiO2 14 1.46 0)^1 air 0 1.0 0",
+            {},
+            simulation_module=simulation,
+        )
+        assert len(mats) == len(th) == len(flags)
+        assert sum(flags) == 1
+        assert th[flags.index(True)] == pytest.approx(1000.0)
+
+    def test_build_tmm_layers_sets_is_incoherent(self, simulation):
+        mats, th, flags = layers_from_formula_with_flags(
+            "air 0 film 100* 1.5 0 air 0",
+            {},
+            simulation_module=simulation,
+        )
+        layers = build_tmm_layers(mats, th, incoherent_flags=flags, simulation_module=simulation)
+        incoherent = [lyr for lyr in layers if bool(getattr(lyr, "is_incoherent", False))]
+        assert len(incoherent) == 1
+        assert float(incoherent[0].depth) == pytest.approx(100.0)
+

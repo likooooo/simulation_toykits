@@ -602,7 +602,7 @@
       },
       "stack": {
         "type": "formula",
-        "formula": "air 0 1.0 0 pe 33 air 0 1.0 0"
+        "formula": "air 0 1.0 0 pe 33* air 0 1.0 0"
       }
     },
     {
@@ -1170,7 +1170,7 @@
       },
       "stack": {
         "type": "formula",
-        "formula": "air 0 1.0 0.0 [2e-06 au glass 1.5] 4000.00000 air 0 1.0 0.0"
+        "formula": "air 0 1.0 0.0 [2e-06 au glass 1.5] 4000* air 0 1.0 0.0"
       }
     },
     {
@@ -1196,7 +1196,7 @@
       },
       "stack": {
         "type": "formula",
-        "formula": "air 0 1.0 0.0 [8e-06 au glass 1.5] 4000.00000 air 0 1.0 0.0"
+        "formula": "air 0 1.0 0.0 [8e-06 au glass 1.5] 4000* air 0 1.0 0.0"
       }
     },
     {
@@ -1222,7 +1222,7 @@
       },
       "stack": {
         "type": "formula",
-        "formula": "air 0 1.0 0.0 [1.4e-05 au glass 1.5] 4000.00000 air 0 1.0 0.0"
+        "formula": "air 0 1.0 0.0 [1.4e-05 au glass 1.5] 4000* air 0 1.0 0.0"
       }
     },
     {
@@ -1703,7 +1703,7 @@
       },
       "stack": {
         "type": "formula",
-        "formula": "air 0 1.0 0 (air 1000 1.0 0 hdpe 14)^1 air 0 1.0 0"
+        "formula": "air 0 1.0 0 (air 1000* 1.0 0 hdpe 14)^1 air 0 1.0 0"
       }
     },
     {
@@ -1754,7 +1754,7 @@
       },
       "stack": {
         "type": "formula",
-        "formula": "air 0 1.0 0 (air 1000 1.0 0 hdpe 14)^2 air 0 1.0 0"
+        "formula": "air 0 1.0 0 (air 1000* 1.0 0 hdpe 14)^2 air 0 1.0 0"
       }
     },
     {
@@ -1805,13 +1805,13 @@
       },
       "stack": {
         "type": "formula",
-        "formula": "air 0 1.0 0 (air 1000 1.0 0 hdpe 14)^3 air 0 1.0 0"
+        "formula": "air 0 1.0 0 (air 1000* 1.0 0 hdpe 14)^3 air 0 1.0 0"
       }
     },
     {
       "id": "fs_cloud_h2o",
       "label": "fs_云雾模型 液态水",
-      "notes": "coherence.scm # TODO: layer*+granular — 阻塞于 layer* 引擎未实现",
+      "notes": "coherence.scm clouds — granular-IR h2o q=1e-6, layer* 250 m path",
       "incoherent": true,
       "material_path_keys": [
         [
@@ -1831,13 +1831,13 @@
       },
       "stack": {
         "type": "formula",
-        "formula": "air 0 1.0 0.0 h2o 250.0 air 0 1.0 0.0"
+        "formula": "air 0 1.0 0.0 [1e-6 h2o air 1.0 0.0] 250000000* air 0 1.0 0.0"
       }
     },
     {
       "id": "fs_cloud_ice",
       "label": "fs_云雾模型 冰晶",
-      "notes": "coherence.scm # TODO: layer*+granular — 阻塞于 layer* 引擎未实现",
+      "notes": "coherence.scm clouds — granular-IR ice q=1e-6, layer* 250 m path",
       "incoherent": true,
       "material_path_keys": [
         [
@@ -1857,7 +1857,7 @@
       },
       "stack": {
         "type": "formula",
-        "formula": "air 0 1.0 0.0 h2o-ice 250.0 air 0 1.0 0.0"
+        "formula": "air 0 1.0 0.0 [1e-6 h2o-ice air 1.0 0.0] 250000000* air 0 1.0 0.0"
       }
     },
     {
@@ -1906,17 +1906,17 @@
     {
       "id": "fs_hdpe_l100_inc",
       "label": "fs_HDPE-BE薄膜 100µm 非相干",
-      "notes": "polyethylene.scm hdpe-L100 # TODO: layer*",
+      "notes": "polyethylene.scm hdpe-L100",
       "incoherent": true,
       "material_path_keys": [
         [
           "fs",
           "materials",
-          "hdpe.yml"
+          "hdpe-be.yml"
         ]
       ],
       "required_material_names": [
-        "hdpe"
+        "hdpe-be"
       ],
       "sim": {
         "wl_from_um": 2.0,
@@ -1927,7 +1927,7 @@
       },
       "stack": {
         "type": "formula",
-        "formula": "air 0 1.0 0 hdpe 100 air 0 1.0 0"
+        "formula": "substrate 0 1.0 0 hdpe-be 100* substrate 0 1.0 0"
       }
     },
     {
@@ -2006,7 +2006,7 @@
       },
       "stack": {
         "type": "formula",
-        "formula": "substrate 0 1.0 0 hdpe 35 substrate 0 1.0 0"
+        "formula": "substrate 0 1.0 0 hdpe 35* substrate 0 1.0 0"
       }
     },
     {
@@ -2032,7 +2032,7 @@
       },
       "stack": {
         "type": "formula",
-        "formula": "air 0 1.0 0 hdpe 12.7 air 0 1.0 0"
+        "formula": "air 0 1.0 0 hdpe 12.7* air 0 1.0 0"
       }
     },
     {
@@ -2084,7 +2084,7 @@
       },
       "stack": {
         "type": "formula",
-        "formula": "substrate 0 1.0 0 hdpe 33 substrate 0 1.0 0"
+        "formula": "substrate 0 1.0 0 hdpe 33* substrate 0 1.0 0"
       }
     },
     {
@@ -2110,7 +2110,7 @@
       },
       "stack": {
         "type": "formula",
-        "formula": "air 0 1.0 0 hdpe 130 air 0 1.0 0"
+        "formula": "air 0 1.0 0 hdpe 130* air 0 1.0 0"
       }
     },
     {
@@ -2136,7 +2136,7 @@
       },
       "stack": {
         "type": "formula",
-        "formula": "air 0 1.0 0 hdpe 14 air 0 1.0 0"
+        "formula": "air 0 1.0 0 hdpe 14* air 0 1.0 0"
       }
     },
     {
@@ -2162,7 +2162,7 @@
       },
       "stack": {
         "type": "formula",
-        "formula": "air 0 1.0 0 hdpe 18 air 0 1.0 0"
+        "formula": "air 0 1.0 0 hdpe 18* air 0 1.0 0"
       }
     },
     {
@@ -2266,7 +2266,7 @@
       },
       "stack": {
         "type": "formula",
-        "formula": "air 0 1.0 0 hdpe 32 air 0 1.0 0"
+        "formula": "substrate 0 1.0 0 hdpe 32* substrate 0 1.0 0"
       }
     }
   ]
