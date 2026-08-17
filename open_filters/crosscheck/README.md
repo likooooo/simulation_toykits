@@ -1,12 +1,12 @@
 # OpenFilters ↔ simulation TMM thickness derivative cross-check
 
 Compare **OpenFilters abeles** analytic thickness derivatives (`dR/dd`, `dT/dd`) with
-**simulation** TMM adjoint (`thickness_*_adjoint`) on identical film stacks.
+**simulation** TMM adjoint (`thickness_reflectance_adjoint` / `thickness_transmittance_adjoint`) on identical film stacks.
 
 ## Prerequisites
 
 1. Built runtime: `simulation_toykits/.simulation_toolkits/simulation.so`
-2. OpenFilters source under `$GENERATE_GOLDEN_TOOLS_DIR/OpenFilters` (default `~/repos/OpenFilters`)
+2. OpenFilters source under `$GENERATE_GOLDEN_TOOLS_DIR/OpenFilters` (default `~/repos/simulation_baseline_tools/OpenFilters`)
 3. Exported materials: `simulation_core/assets/database/of/materials/*.yml`
 
 ```bash
@@ -20,7 +20,7 @@ python simulation_core/assets/database/of/update_current_database.py
 |----------|---------|
 | `SIMULATION_ARTIFACTS_DIR` | `simulation_toykits/.simulation_toolkits` |
 | `SIMULATION_DATABASE_DIR` | `simulation_core/assets/database` |
-| `GENERATE_GOLDEN_TOOLS_DIR` | `~/repos` (OpenFilters at `$GENERATE_GOLDEN_TOOLS_DIR/OpenFilters`) |
+| `GENERATE_GOLDEN_TOOLS_DIR` | `~/repos/simulation_baseline_tools` (OpenFilters at `$GENERATE_GOLDEN_TOOLS_DIR/OpenFilters`) |
 
 ## Run
 

@@ -43,7 +43,12 @@ python scripts/build_toykits.py release      # 发布到 simulation_toolkits_art
 
 #### 运行时环境变量
 
-`scripts/init-toykits-build-env.sh` 为**纯 runtime**（4 个 export），pytest / Streamlit 前 source：
+`scripts/init-toykits-build-env.sh` 为**纯 runtime**，pytest / Streamlit 前 source。导出：
+
+- `SIMULATION_ARTIFACTS_DIR`（默认 `{repo}/.simulation_toolkits`）
+- `SIMULATION_DATABASE_DIR`（默认 `{artifacts}/assets`）
+- `GENERATE_GOLDEN_TOOLS_DIR`
+- `PYTHONPATH`、`LD_LIBRARY_PATH`
 
 ```bash
 source scripts/init-toykits-build-env.sh
@@ -51,12 +56,33 @@ source scripts/init-toykits-build-env.sh
 
 #### 测试
 
+与 CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）对齐：
+
 ```bash
 source scripts/init-toykits-build-env.sh
+python scripts/build_toykits.py --verify_runtime_commit
+python scripts/check_import_contract.py
 python -m pytest test/ -v
 ```
 
+本地对齐全仓 CI（先 build 后 test）：
+
+```bash
+python scripts/ci_orchestrate.py build
+python scripts/ci_orchestrate.py test
+# 或: python scripts/ci_orchestrate.py all
+```
+
+TMM 须在 `simulation_core` Release `build/` 下跑（**不是** `.simulation_toolkits`）：
+
+```bash
+source simulation_core/scripts/init-simulation-build-env.sh build
+bash simulation_core/assets/ipynb/simulation/TMM/run_tmm.sh test
+```
+
 C++ 全量测试见 [simulation_core/README.md](simulation_core/README.md)。
+
+**granfilm**（对照测试，需 toykits artifact）：`source scripts/init-toykits-build-env.sh` 后对 `granfilm/` 跑 pytest；对比报告入口为 `granfilm/build_granfilm_compare.py`。
 
 ### Docker 部署
 
@@ -100,11 +126,13 @@ CI：`--download_toolkits` → pytest → `python scripts/build_toykits.py hf`�
 
 | 目录 / 文件 | 说明 |
 |-------------|------|
-| **filmstack_simulation/** | 多层膜 Streamlit 模块（可独立拷贝） |
-| **simulation_database/** | 仿真数据库 Streamlit 模块（可独立拷贝） |
+| **filmstack_simulation/** | 多层膜 Streamlit 模块（可独立拷贝；含嵌套 `filmstack_optimization/`） |
+| **simulation_database/** | 仿真数据库 Streamlit 模块（可独立拷贝；`render_page` 须传 material/spectrum keys） |
+| **open_filters/** | OpenFilters ↔ TMM 对照与 LM 细化 |
+| **granfilm/** | GranFilm 对照测试与报告脚本 |
 | **pages/** | Streamlit 多页入口 |
 | **core/** | 宿主计算逻辑 |
-| **scripts/** | `build_toykits.py`、[simulation_toykits_deploy.md](scripts/simulation_toykits_deploy.md) |
+| **scripts/** | `build_toykits.py`、`ci_orchestrate.py`、[simulation_toykits_deploy.md](scripts/simulation_toykits_deploy.md) |
 | **test/** | 单元测试 |
 | **simulation_core/** | 子模块（仅编译时需要） |
 | **.simulation_toolkits/** | runtime artifact（gitignore） |

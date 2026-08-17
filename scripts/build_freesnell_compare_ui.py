@@ -52,9 +52,9 @@ EV_TO_UM = 1.23984193
 # Paths are resolved here (not via simulation_core/scripts): toykits CI must
 # run on downloaded release artifacts only, without the simulation_core tree.
 _ENV_TOOLS_DIR = "GENERATE_GOLDEN_TOOLS_DIR"
-_FREESNELL_REL_DIR = "freesnell-build/FreeSnell"
-_FREESNELL_REL_SCM = "freesnell-install/bin/scm"
-_FREESNELL_REL_SLIB = "freesnell-install/lib/slib"
+_FREESNELL_REL_DIR = "FreeSnell/FreeSnell"
+_FREESNELL_REL_SCM = "FreeSnell/bin/scm"
+_FREESNELL_REL_SLIB = "FreeSnell/lib/slib"
 _FREESNELL_DEFAULTS: tuple[Path, Path, Path] | None = None
 
 
@@ -62,7 +62,7 @@ def _tools_dir() -> Path:
     env = os.environ.get(_ENV_TOOLS_DIR, "").strip()
     if env:
         return Path(env).expanduser().resolve()
-    return (Path.home() / "repos").resolve()
+    return (Path.home() / "repos" / "simulation_baseline_tools").resolve()
 
 
 def _freesnell_defaults() -> tuple[Path, Path, Path]:
@@ -80,7 +80,7 @@ def _freesnell_defaults() -> tuple[Path, Path, Path]:
 
 def _tools_dir_hint() -> str:
     return (
-        f"export {_ENV_TOOLS_DIR}=~/repos\n"
+        f"export {_ENV_TOOLS_DIR}=~/repos/simulation_baseline_tools\n"
         f"  # expect: {_FREESNELL_REL_DIR}, {_FREESNELL_REL_SCM}, {_FREESNELL_REL_SLIB}"
     )
 

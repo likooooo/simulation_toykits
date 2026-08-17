@@ -10,3 +10,4 @@ __pycache__
 .ci
 /py_core_plugins
 nightly_job.txt
+.vscode

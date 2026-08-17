@@ -18,9 +18,14 @@ from pathlib import Path
 
 from common import HOST_DESIGN_TOKENS_PATH  # simulation_toykits only
 
-# simulation_database
+# simulation_database — material_path_keys / required_material_names / spectrum_path_keys 均必填
 from simulation_database.page import render_page
-render_page(tokens_path=HOST_DESIGN_TOKENS_PATH)
+render_page(
+    tokens_path=HOST_DESIGN_TOKENS_PATH,
+    material_path_keys=[],
+    required_material_names=frozenset(),
+    spectrum_path_keys=[],
+)
 
 # filmstack_simulation
 from filmstack_simulation.page import PageContext, render_page
@@ -29,5 +34,7 @@ render_page(
     materials_db=...,
 )
 ```
+
+Host pages may also pass optional keys such as `material_path_keys` into database UI wiring; see `pages/` for full examples.
 
 When copying a package into another project, place `design_tokens.css` in the host app and pass its path through the package API.

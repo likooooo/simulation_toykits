@@ -1,6 +1,6 @@
 # Scattnlay 学习笔记：多层 Mie 散射、边界匹配与数值防坑
 
-> 面向正在实现「孤立多层包心结构」边界匹配（$\mathbf{W}(r)$、$\mathbf{T}_{global}$）的读者。  
+> **非冻结调研笔记**（外部 `~/repos/scattnlay`，非本仓库产品 API）。面向正在实现「孤立多层包心结构」边界匹配（$\mathbf{W}(r)$、$\mathbf{T}_{global}$）的读者。  
 > 源码仓库：`~/repos/scattnlay`（[ovidiopr/scattnlay](https://github.com/ovidiopr/scattnlay)）
 
 ---

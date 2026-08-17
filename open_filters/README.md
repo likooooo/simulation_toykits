@@ -11,6 +11,8 @@ open_filters/
 ├── refinement/              # thickness LM refinement (abeles + simulation backends)
 ├── run_crosscheck.sh        # derivative cross-check tests
 ├── run_refinement_parity.sh # LM parity: abeles vs simulation adjoint
+├── run_all_tests.sh         # one-shot tests
+├── plot_all_reports.py      # aggregate plots/reports
 └── crosscheck/
 ```
 
@@ -28,6 +30,9 @@ python simulation_core/assets/database/of/update_current_database.py
 # LM refinement parity (abeles vs simulation, same LM)
 ./open_filters/run_refinement_parity.sh
 # PNG output: open_filters/refinement/output/parity_*.png
+
+# Or run everything:
+./open_filters/run_all_tests.sh
 ```
 
-See [crosscheck/README.md](crosscheck/README.md) and [PLAN_lm_refinement_port.md](PLAN_lm_refinement_port.md).
+See [crosscheck/README.md](crosscheck/README.md).

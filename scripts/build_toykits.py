@@ -295,7 +295,7 @@ def build_bench_step() -> None:
         [sys.executable, "-B", str(script), "--output", str(output)],
         cwd=repo_root(),
         env=env,
-        hint="请将 FreeSnell 放到 $GENERATE_GOLDEN_TOOLS_DIR（默认 ~/repos）约定子目录",
+        hint="请将 FreeSnell 放到 $GENERATE_GOLDEN_TOOLS_DIR（默认 ~/repos/simulation_baseline_tools）约定子目录",
     )
     html_path = output / FS_COMPARE_HTML_NAME
     if not html_path.is_file():

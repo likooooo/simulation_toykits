@@ -20,7 +20,7 @@ def crosscheck_dir() -> Path:
 
 
 def database_of_dir() -> Path:
-    """OpenFilters submodule under simulation_database (``of/``)."""
+    """OpenFilters materials tree under ``simulation_core/assets/database/of/``."""
     return simulation_database_root() / "of"
 
 
@@ -39,5 +39,9 @@ def of_materials_release_dir() -> Path:
 def upstream_openfilters_root() -> Path:
     """OpenFilters source tree under GENERATE_GOLDEN_TOOLS_DIR."""
     env = os.environ.get("GENERATE_GOLDEN_TOOLS_DIR", "").strip()
-    root = Path(env).expanduser() if env else Path.home() / "repos"
+    root = (
+        Path(env).expanduser()
+        if env
+        else Path.home() / "repos" / "simulation_baseline_tools"
+    )
     return (root / "OpenFilters").resolve()

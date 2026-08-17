@@ -70,10 +70,19 @@ def require_venv(venv: Path, *, hint: str) -> str:
     return f"source {shlex.quote(str(activate))}"
 
 
+def golden_tools_export() -> str:
+    """对照工具树：simulation_baseline_tools（含 simulation_golden_data submodule）。"""
+    default = Path.home() / "repos" / "simulation_baseline_tools"
+    return (
+        f'export GENERATE_GOLDEN_TOOLS_DIR="${{GENERATE_GOLDEN_TOOLS_DIR:-{default}}}"'
+    )
+
+
 def infra_env_block() -> str:
     """infrastructure README: init-inf-build-env.sh → infrastructure/.venv."""
     return "\n".join(
         [
+            golden_tools_export(),
             f"source {shlex.quote(str(INIT_INF))}",
             require_venv(INFRA_VENV, hint=_INFRA_VENV_HINT),
         ]
@@ -84,6 +93,7 @@ def sim_env_block(artifacts: str) -> str:
     """simulation_core README: init-simulation-build-env.sh → infrastructure/.venv."""
     return "\n".join(
         [
+            golden_tools_export(),
             f"source {shlex.quote(str(INIT_SIM))} {shlex.quote(artifacts)}",
             require_venv(INFRA_VENV, hint=_INFRA_VENV_HINT),
         ]
@@ -127,13 +137,14 @@ def infra_build_steps() -> list[ShellStep]:
 
 
 def simulation_build_steps() -> list[ShellStep]:
+    # Align with simulation_core/.github/workflows/build-ci-full.yml (--mkl on).
     return [
         ShellStep(
             "simulation_core Release",
             SIM_ROOT,
             (
                 f"{sim_env_block('build')}\n"
-                f"python3 {shlex.quote(str(BUILD_SIM))} -B build --build-type Release"
+                f"python3 {shlex.quote(str(BUILD_SIM))} -B build --build-type Release --mkl on"
             ),
         ),
         ShellStep(
@@ -141,7 +152,7 @@ def simulation_build_steps() -> list[ShellStep]:
             SIM_ROOT,
             (
                 f"{sim_env_block('build-asan')}\n"
-                f"python3 {shlex.quote(str(BUILD_SIM))} -B build-asan --build-type Debug"
+                f"python3 {shlex.quote(str(BUILD_SIM))} -B build-asan --build-type Debug --mkl on"
             ),
         ),
     ]

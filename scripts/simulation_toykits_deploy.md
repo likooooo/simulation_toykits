@@ -93,10 +93,10 @@ flowchart BT
   Host --> Portable
   Host --> Runtime
   Portable --> Runtime
-  TMM --> Runtime
+  TMM --> Assets
   Runtime --> Infra
   Runtime -.->|env 读文件| Assets
-  TMM --> Assets
+  TMM -.->|须 simulation_core build/ + YAML DB| SimBuild[simulation_core/build]
 ```
 
 **运行时依赖表**：
@@ -106,7 +106,7 @@ flowchart BT
 | 宿主 `pages/` → 可移植包 | 如 [`pages/filmstack_toolkits/filmstack simulation.py`](../../pages/filmstack_toolkits/filmstack%20simulation.py) |
 | 可移植包 → runtime | 入口 `import simulation`（eager-load 插件）；业务代码直接 `import filmstack_visualizer` 等 |
 | 可移植包 **不** → 宿主 | 禁止 `from core` / `from pages` / `from ui` |
-| `import simulation` → eager-load 插件 | [`py_plugin.cpp:91`](../../simulation_core/3rdparty/infrastructure/src/py_visualizer/py_plugin.cpp)：`py_core_plugins` 先于 `simulation_plugins` |
+| `import simulation` → eager-load 插件 | [`py_plugin.cpp`](../../simulation_core/3rdparty/infrastructure/src/py_visualizer/py_plugin.cpp) 中 `initialize_py_runtime` / `load_all_plugins`：按传入的 `plugin_paths` 顺序加载（toykits 构造为 `py_core_plugins` 先于 `simulation_plugins`） |
 | `simulation_plugins` → `py_core_plugins` | 如 `filmstack_optimization_utils` → `pipe_utils`；`filmstack_visualizer` → lazy `viz_io` |
 | **无** `py_core_plugins` → `simulation_plugins` | 无反向 import |
 | C++ → Python 插件 | [`simulation_database.cpp`](../../simulation_core/src/simulation_database.cpp) 调用 `simulation_database_parser` |
@@ -123,7 +123,7 @@ flowchart BT
 | simulation_core 源码 | C++ + `simulation_plugins/` | infrastructure、External | deploy → runtime；TMM 脚本 |
 | assets | `assets/ipynb/` | —（数据） | runtime / TMM **经 env 读取** |
 | `.simulation_toolkits/` | collect 产物 | 由 build 生成 | 所有 `import simulation` |
-| 可移植包 | `filmstack_simulation/`、`simulation_database/` | runtime | toykits `pages/` |
+| 可移植包 | `filmstack_simulation/`（含嵌套 `filmstack_optimization/`）、`simulation_database/` | runtime | toykits `pages/` |
 | toykits 宿主 | `app.py`、`pages/`、`core/`、`common.py` | 可移植包 + runtime | 最终用户 |
 
 **可移植性**：可移植包 + runtime artifacts 可脱离宿主部署；**禁止** 可移植包 import 宿主模块。
@@ -132,7 +132,7 @@ flowchart BT
 
 | 路径 | 职责 |
 |------|------|
-| [`simulation_core/3rdparty/infrastructure/py_core_plugins/`](../../simulation_core/3rdparty/infrastructure/py_core_plugins/) | 通用 viz、pipe、compare 等（约 20 模块） |
+| [`simulation_core/3rdparty/infrastructure/py_core_plugins/`](../../simulation_core/3rdparty/infrastructure/py_core_plugins/) | 通用 viz、pipe 等（源码树约 18 模块；toykits collect 后 **prune** 仅保留 5 个，见 §3.1） |
 | [`simulation_core/simulation_plugins/`](../../simulation_core/simulation_plugins/) | simulation 耦合插件（`filmstack_visualizer`、`simulation_database_parser`、`tmm_utils` 等） |
 | [`filmstack_simulation/`](../../filmstack_simulation/)、[`simulation_database/`](../../simulation_database/) | 可拷贝到其他 Streamlit 项目 |
 | [`core/`](../../core/)、[`pages/`](../../pages/)、[`ui/`](../../ui/)、[`app.py`](../../app.py) | 宿主胶水，不可被可移植包依赖 |
@@ -150,27 +150,32 @@ flowchart BT
 
 ### 3.1 `.simulation_toolkits/` 内容
 
-collect 后期望目录（与 [`build_simulation.py --collect`](../../simulation_core/scripts/build_simulation.py) 一致）：
+collect（[`build_simulation.py --collect`](../../simulation_core/scripts/build_simulation.py)）后，[`build_toykits.py`](build_toykits.py) 还会 `prune_toykits_plugins` 与 database/bench 步骤。期望布局：
 
 | 内容 | 来源 |
 |------|------|
 | `simulation.so` | CMake build |
 | 非系统 `.so`（如 `libuca.so`、`libpy_visualizer.so`） | `ldd` 递归收集 |
-| `py_core_plugins/` | `stage_plugins` 从 infrastructure 源码 |
-| `simulation_plugins/` | `stage_plugins` 从 simulation_core 源码 |
+| `py_core_plugins/`（**allowlist**） | stage 后 prune：仅 `visualizer.py`、`viz_io.py`、`pipe_utils.py`、`panel_renderer.py`、`plot_source.py` |
+| `simulation_plugins/`（**allowlist**） | stage 后 prune：仅 `simulation_database_parser.py`、`filmstack_visualizer.py`、`filmstack_optimization_utils.py`、`layer_visualizer.py`、`simulation_paths.py`、`tmm_utils.py` |
 | `test_diffraction` | `build_toykits` 从 `build/` 额外复制（衍射角计算器） |
+| `assets/database.bin` 等 | `--database` / 全量 build 预编译材料库（明文 YAML 在 release 路径下会移除） |
+| `assets/fs_compare/` 等 | `--bench` / 全量 build 对照产物 |
+
+源码树里未进 allowlist 的插件（如 `compare_data`、`matlab_io`）**不会**出现在 toykits runtime。
 
 ### 3.2 deploy 流水线（toykits）
 
 ```mermaid
 flowchart LR
   build["build_toykits.py / build_simulation.py --collect"]
-  diff["copy test_diffraction"]
+  prune["prune_toykits_plugins"]
+  diff["copy test_diffraction / database / bench"]
   runtime[".simulation_toolkits/ 就绪"]
-  build --> diff --> runtime
+  build --> prune --> diff --> runtime
 ```
 
-实现：默认 `build_toykits.py` 全量编译；`build local` / `build docker` / `build hf` / `build release` 先编译再消费；单独 `local` / `docker` / `hf` / `release` **不隐式编译**。
+实现：默认 `build_toykits.py` 全量编译；`build local` / `build docker` / `build hf` / `build release` 先编译再消费；单独 `local` / `docker` / `hf` / `release` **不隐式编译**（也不 sync 插件）。
 
 ### 3.3 环境契约
 
@@ -182,10 +187,18 @@ flowchart LR
 | `PYTHONPATH` | `{repo}:{artifacts}` | 见 [`init-toykits-build-env.sh`](init-toykits-build-env.sh) |
 | `LD_LIBRARY_PATH` | `{artifacts}` | 动态库 |
 | `SIMULATION_DATABASE_DIR` | `{artifacts}/assets` | 预编译 `database.bin` 目录 |
+| `GENERATE_GOLDEN_TOOLS_DIR` | 默认 `~/repos/simulation_baseline_tools` | 对照工具树（可选） |
 
-TMM 测试须先 `source init-toykits-build-env.sh`（或 core 的 `init-simulation-build-env.sh`），再执行 [`run_tmm.sh`](../../simulation_core/assets/ipynb/simulation/TMM/run_tmm.sh) `test` / `jupyter`。
+**TMM**（Oghma 对齐）**不要**用 toykits init / `.simulation_toolkits`。须：
 
-推荐一次性设置：
+```bash
+source simulation_core/scripts/init-simulation-build-env.sh build
+bash simulation_core/assets/ipynb/simulation/TMM/run_tmm.sh test   # 或 jupyter
+```
+
+`run_tmm.sh` 要求 YAML 材料库（`assets/database/og/materials`）与 `simulation_core` Release `build/` 中的 `simulation.so`。
+
+toykits Streamlit / pytest 推荐：
 
 ```bash
 source scripts/init-toykits-build-env.sh
@@ -206,7 +219,7 @@ source scripts/init-toykits-build-env.sh
 | toykits Streamlit / pytest | `.simulation_toolkits` | 含 repo root | `{repo}` |
 | simulation_core ctest | `build/` | `${CMAKE_BINARY_DIR}` only | `build/` |
 | Docker / HF Space | `/app/.simulation_toolkits` | `/app` + artifacts | `/app` 或 artifacts |
-| TMM Oghma 对齐测试 | `.simulation_toolkits` 或 `build/` | 同 toykits / core | TMM 脚本目录（`run_tmm.sh` cd） |
+| TMM Oghma 对齐测试 | `simulation_core/build`（**不是** `.simulation_toolkits`） | sim init 设置 | TMM 脚本目录（`run_tmm.sh` cd） |
 
 独立 core 开发：[`simulation_core/scripts/init-simulation-build-env.sh`](../../simulation_core/scripts/init-simulation-build-env.sh)（无 repo root）。
 
@@ -245,8 +258,8 @@ python scripts/build_toykits.py local
 
 | 改动类型 | 操作 | 是否重启 Streamlit |
 |----------|------|-------------------|
-| `simulation_plugins/` 或 `py_core_plugins/` Python | `python scripts/build_toykits.py` 或 `local` | 通常否（Streamlit 自动重载页面代码）；插件未生效则重启 |
-| C++ / `simulation.so` | 完整 `build_toykits local` 或 `build_toykits` | **是**（local 会重启 Streamlit） |
+| `simulation_plugins/` 或 `py_core_plugins/` Python | **必须** `python scripts/build_toykits.py` 或 `--toolkits`（`local` **不** sync 插件） | 插件生效后通常需重启；仅宿主页面改动可自动重载 |
+| C++ / `simulation.so` | `python scripts/build_toykits.py`（或 `build local`） | **是** |
 | 宿主 `pages/` / `core/` / 可移植包 UI | 无需 collect | 否（Streamlit 自动重载） |
 
 ### SOP-3：Docker 本地镜像

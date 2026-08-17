@@ -1,6 +1,6 @@
 # SMUTHI 学习笔记：从平面波到散射系数
 
-> 面向第一次读 SMUTHI 源码的读者。目标：搞懂「入射平面波怎么变成系数向量 **b**，再怎么参与多重散射」。
+> **非冻结调研笔记**（可能过时）。面向第一次读 SMUTHI 源码的读者。目标：搞懂「入射平面波怎么变成系数向量 **b**，再怎么参与多重散射」。产品 API 以 `simulation_core` 代码与 `docs/notes/` 冻结文档为准。
 
 ---
 
@@ -393,7 +393,7 @@ infrastructure 中已有相关积木，但尚未实现平面波投影：
 |------|------|------|
 | 柱坐标 Bessel 基 | `infrastructure/include/kernels/polynomial/bessel.hpp` | 已实现 |
 | 平面波场评估 | `infrastructure/include/kernels/source/plane_wave.hpp` | 已实现 |
-| 平面波 → 柱/球模投影 | `infrastructure/include/kernels/kspace/plane_wave_expansion.hpp` | **空文件，待实现** |
+| 平面波 → 柱/球模投影 | `infrastructure/include/kernels/kspace/plane_wave_expansion.hpp` | **已实现**（Jacobi–Anger / PWE↔SWE 等；以头文件公开 API 为准） |
 
 若要在 C++ 侧复刻 SMUTHI 的 `pwe_to_swe_conversion` 或测试脚本的 `jacobi_anger_excitation`，可参考本笔记第八、十一节。
 

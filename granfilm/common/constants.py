@@ -17,7 +17,7 @@ def _tools_dir() -> Path:
     env = os.environ.get("GENERATE_GOLDEN_TOOLS_DIR", "").strip()
     if env:
         return Path(env).expanduser().resolve()
-    return (Path.home() / "repos").resolve()
+    return (Path.home() / "repos" / "simulation_baseline_tools").resolve()
 
 
 DEFAULT_GRANFILM_DIR = str((_tools_dir() / "GranFilm-v1.0").resolve())

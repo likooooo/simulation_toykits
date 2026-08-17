@@ -1,6 +1,6 @@
 # 多层膜设计/分析专家智能体
 
-`agent/fresnel_caculator` 下的 CLI 专家系统：通过 **Ollama** 驱动，调用 **filmstack_simulation**、**simulation_database** 与 **filmstack_visualizer** 插件，实现与 [pages/filmstack_toolkits](../../pages/filmstack_toolkits) 等价的材料查询、膜系构建、R/T 计算与结果导出。
+`agent/fresnel_caculator` 下的 CLI 专家系统：通过 **Ollama** 驱动，调用 **filmstack_simulation**、**simulation_database** 与 **filmstack_visualizer** 插件，覆盖材料查询与膜系 R/T 计算/扫描的**子集**（无完整 Database UI、Freehand 优化、Diffraction、Ψ/Δ 谱图等；完整 UI 见 [pages/filmstack_toolkits](../../pages/filmstack_toolkits)）。
 
 ## 能力
 
@@ -10,7 +10,7 @@
 
 ## 环境
 
-1. Python 3.10+（与主仓库一致）
+1. Python ≥3.10（CI / Docker 为 3.12）
 2. Ollama + 支持工具调用的模型（默认 `qwen3.5:9b`）；Docker 部署见 [docker/README.md](docker/README.md)
 3. `.simulation_toolkits/simulation.so`（`python scripts/build_toykits.py`）；pytest 须 `source scripts/init-toykits-build-env.sh`
 
